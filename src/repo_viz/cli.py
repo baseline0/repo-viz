@@ -14,6 +14,8 @@ from pathlib import Path
 import typer
 
 from repo_viz.constants import REPO_ROOT
+from repo_viz.discovery import list_python_files
+from repo_viz.indicators.producers import satd_counts
 from repo_viz.indicators.registry import evaluate, write_results
 from repo_viz.indicators.spec import EvaluationContext, load_config
 from repo_viz.model import GraphSnapshot
@@ -55,15 +57,21 @@ def evaluate_indicators(
     out: Path = typer.Option(Path("indicators.json"), "--out"),
     trigger: str = typer.Option("render", "--trigger", help="render or change"),
     changed: list[Path] = typer.Option([], "--changed", help="Paths touched by a change"),
+    repo: Path | None = typer.Option(None, "--repo", help="Checkout supplying producer values"),
 ) -> None:
     """Run configured indicator evaluators over a snapshot."""
     if trigger not in {"render", "change"}:
         raise typer.BadParameter("trigger must be render or change")
     graph = GraphSnapshot.from_dict(json.loads(snapshot_path.read_text(encoding="utf-8")))
+    values: dict[str, dict[str, float]] = {}
+    if repo is not None:
+        resolved = repo.resolve()
+        values["satd"] = satd_counts(resolved, list_python_files(resolved))
     context = EvaluationContext(
         graph=graph,
         trigger=trigger,
         changed_paths=tuple(str(item) for item in changed),
+        values=values,
     )
     results = evaluate(load_config(config), context)
     write_results(results, out)

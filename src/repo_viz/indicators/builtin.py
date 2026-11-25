@@ -34,11 +34,35 @@ def _threshold(context: EvaluationContext, name: str, default: float) -> float:
     return context.thresholds.get(name, default)
 
 
+def _node_path(node: Node, context: EvaluationContext) -> str:
+    """Resolve a symbol to its enclosing file path so file-level producers apply."""
+    current = node
+    seen: set[str] = set()
+    while current.path is None and current.parent is not None and current.parent not in seen:
+        seen.add(current.parent)
+        parent = next((item for item in context.graph.nodes if item.id == current.parent), None)
+        if parent is None:
+            break
+        current = parent
+    return current.path or node.id
+
+
 def _produced(context: EvaluationContext, metric: str, node: Node) -> float | None:
-    """Read a producer-supplied value for this node, keyed by path or node id."""
+    """Read a producer-supplied value for this file, falling back to the node id."""
     values = context.values.get(metric, {})
-    found = values.get(node.path or "") if node.path else None
+    found = values.get(_node_path(node, context))
     return found if found is not None else values.get(node.id)
+
+
+def _churn_for(node: Node, context: EvaluationContext) -> int:
+    """Churn lives on file nodes; symbol nodes inherit their enclosing file's count."""
+    if node.metrics.churn_30d:
+        return node.metrics.churn_30d
+    path = _node_path(node, context)
+    return next(
+        (item.metrics.churn_30d for item in context.graph.nodes if item.path == path and item.metrics.churn_30d),
+        0,
+    )
 
 
 def security(node: Node, _context: EvaluationContext) -> Evaluation:
@@ -131,7 +155,9 @@ def coupling(node: Node, context: EvaluationContext) -> Evaluation:
 def hotspot(node: Node, context: EvaluationContext) -> Evaluation:
     """Churn x coupling: the prioritisation signal used by industrial friction studies."""
     produced = _produced(context, "hotspot", node)
-    value = produced if produced is not None else node.metrics.churn_30d * (node.metrics.fan_in + node.metrics.fan_out)
+    value = (
+        produced if produced is not None else _churn_for(node, context) * (node.metrics.fan_in + node.metrics.fan_out)
+    )
     if value <= 0:
         return Evaluation(State.NA, 0, "no hotspot evidence")
     if value > _threshold(context, "violation", _HOTSPOT_VIOLATION):
@@ -146,9 +172,9 @@ def satd(node: Node, context: EvaluationContext) -> Evaluation:
     value = _produced(context, "satd", node)
     if value is None:
         return Evaluation(State.NA, None, "SATD producer not configured")
-    if value > _threshold(context, "violation", _SATD_VIOLATION):
+    if value >= _threshold(context, "violation", _SATD_VIOLATION):
         return Evaluation(State.VIOLATION, value, "multiple debt markers")
-    if value > _threshold(context, "partial", _SATD_PARTIAL):
+    if value >= _threshold(context, "partial", _SATD_PARTIAL):
         return Evaluation(State.PARTIAL, value, "debt marker present")
     return Evaluation(State.VERIFIED, value, "no debt markers")
 

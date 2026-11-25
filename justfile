@@ -224,8 +224,8 @@ check-indicators:
     uv run python -c "from pathlib import Path; from repo_viz.indicators.spec import load_config; c = load_config(Path('config/indicators.toml')); print(f'{len(c.indicators)} indicators')"
 
 [group("dev")]
-indicators SNAPSHOT OUT="indicators.json" TRIGGER="render":
-    uv run python -m repo_viz.cli evaluate-indicators "{{SNAPSHOT}}" --out "{{OUT}}" --trigger "{{TRIGGER}}"
+indicators SNAPSHOT OUT="indicators.json" TRIGGER="render" REPO="":
+    uv run python -m repo_viz.cli evaluate-indicators "{{SNAPSHOT}}" --out "{{OUT}}" --trigger "{{TRIGGER}}" {{ if REPO != "" { "--repo \"" + REPO + "\"" } else { "" } }}
 
 [group("dev")]
 serve GRAPH PORT="8080" *ARGS: frontend-build

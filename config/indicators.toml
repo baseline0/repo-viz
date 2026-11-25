@@ -92,10 +92,11 @@ glyph = "dot"
 position = 7
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:coupling"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
-thresholds = { partial = 10, violation = 20 }
+# repo-viz fan-in+fan-out p90=3, p95=5; context-specific priors, not universals.
+thresholds = { partial = 2, violation = 4 }
 
 [[indicators]]
 id = "hotspot"
@@ -104,10 +105,11 @@ glyph = "gauge"
 position = 8
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:hotspot"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
-thresholds = { partial = 20, violation = 50 }
+# Corrected churn x coupling p90=6, p95=10, max=30 on the current snapshot.
+thresholds = { partial = 6, violation = 12 }
 
 [[indicators]]
 id = "satd"
@@ -116,9 +118,10 @@ glyph = "bug"
 position = 9
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:satd"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
+# Producer: tokenize-based TODO/FIXME/HACK/XXX/BUG comment scan via --repo.
 thresholds = { partial = 1, violation = 3 }
 
 [[indicators]]

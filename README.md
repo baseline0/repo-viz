@@ -16,7 +16,7 @@ Analysis is static-only: the snapshot records hierarchy, imports, calls, inherit
     just indicators graph.json indicators.json
     just serve graph.json --indicators indicators.json
 
-Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position, trigger and context-specific thresholds to a dotted Python evaluator. Set `enabled = false` for an indicator whose producer is not configured for a repo (coverage, coupling, hotspot, SATD and code-health proxy are off by default — see ADR-006). Evaluators read producer values from `EvaluationContext.values` and never fabricate a result: absent data yields `na`. Run `just indicators graph.json indicators.json render` (or `change`) to evaluate on view load or after a refactor.
+Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position, trigger and context-specific thresholds to a dotted Python evaluator. Set `enabled = false` for an indicator whose producer is not configured for a repo (coverage, coupling, hotspot, SATD and code-health proxy are off by default — see ADR-006). Evaluators read producer values from `EvaluationContext.values` and never fabricate a result: absent data yields `na`. Coupling, hotspot and SATD are enabled (ADR-007); pass `REPO=<checkout>` to `just indicators` to run the SATD producer before evaluation, e.g. `just indicators graph.json indicators.json render /home/mark/projects/repo-viz`. Run with `change` to evaluate after a refactor.
 
 `just serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. The viewer accepts `?graph=<url>` to load a different snapshot.
 
