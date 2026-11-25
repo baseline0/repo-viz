@@ -60,6 +60,7 @@ class Indicator:
     enabled: bool = True
     triggers: frozenset[str] = frozenset(VALID_TRIGGERS)
     timeout_seconds: int = 5
+    thresholds: Mapping[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.id or ":" not in self.compute:
@@ -119,6 +120,7 @@ class IndicatorConfig:
                     "colors": {state.value: color for state, color in item.colors.items()},
                     "enabled": item.enabled,
                     "triggers": sorted(item.triggers),
+                    "thresholds": dict(item.thresholds),
                 }
                 for item in self.indicators
             ],
@@ -133,6 +135,8 @@ class EvaluationContext:
     trigger: str
     changed_paths: tuple[str, ...] = ()
     coverage: Mapping[str, float] = field(default_factory=dict)
+    values: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    thresholds: Mapping[str, float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,6 +182,7 @@ def load_config(path: Path) -> IndicatorConfig:
             enabled=bool(item.get("enabled", True)),
             triggers=frozenset(item.get("triggers", VALID_TRIGGERS)),
             timeout_seconds=int(item.get("timeout_seconds", 5)),
+            thresholds=dict(item.get("thresholds", {})),
         )
         for item in raw["indicators"]
     )

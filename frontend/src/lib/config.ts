@@ -15,12 +15,16 @@ const DEFS = [
   ['sentinel', 'Antipattern sentinel', 'bug', 4],
   ['coverage', 'Test coverage', 'gauge', 5],
   ['churn', 'Recent churn', 'clock', 6],
+  ['coupling', 'Structural coupling', 'dot', 7],
+  ['hotspot', 'Change hotspot', 'gauge', 8],
+  ['satd', 'Self-admitted debt', 'bug', 9],
+  ['code_health', 'Code health proxy', 'shield', 10],
 ] as const;
 
 /** Fallback keeps the viewer usable when /config.json is unavailable. */
 export const DEFAULT_CONFIG: IndicatorConfig = {
   version: 1,
-  arc: { start_deg: 315, end_deg: 45, step_deg: 12, first_deg: 320 },
+  arc: { start_deg: 315, end_deg: 45, step_deg: 8, first_deg: 320 },
   indicators: DEFS.map(([id, label, glyph, position]) => ({
     id,
     label,

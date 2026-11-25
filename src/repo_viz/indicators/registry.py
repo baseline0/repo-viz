@@ -15,7 +15,7 @@ import os
 import signal
 import threading
 from collections.abc import Callable
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -67,9 +67,10 @@ def evaluate(config: IndicatorConfig, context: EvaluationContext) -> tuple[Indic
     results: list[IndicatorResult] = []
     for indicator in config.enabled_for(context.trigger):
         evaluator = resolve(indicator.compute)
+        scoped = replace(context, thresholds=indicator.thresholds) if indicator.thresholds else context
         for node in context.graph.nodes:
             try:
-                evaluation = _evaluate_one(evaluator, node, context, indicator.timeout_seconds)
+                evaluation = _evaluate_one(evaluator, node, scoped, indicator.timeout_seconds)
             except Exception as cause:  # a broken indicator must not break the view
                 evaluation = Evaluation(State.NA, None, f"{type(cause).__name__}: {cause}")
             results.append(

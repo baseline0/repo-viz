@@ -3,7 +3,7 @@ version = 1
 [arc]
 start_deg = 315
 end_deg = 45
-step_deg = 12
+step_deg = 8
 first_deg = 320
 
 [[indicators]]
@@ -82,3 +82,53 @@ compute = "repo_viz.indicators.builtin:churn"
 enabled = false
 triggers = ["change"]
 timeout_seconds = 5
+
+# Literature-backed slots (ADR-006). Disabled until a producer supplies data:
+# thresholds are context-specific, not universal constants.
+[[indicators]]
+id = "coupling"
+label = "Structural coupling"
+glyph = "dot"
+position = 7
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:coupling"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 10, violation = 20 }
+
+[[indicators]]
+id = "hotspot"
+label = "Change hotspot"
+glyph = "gauge"
+position = 8
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:hotspot"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 20, violation = 50 }
+
+[[indicators]]
+id = "satd"
+label = "Self-admitted debt"
+glyph = "bug"
+position = 9
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:satd"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 1, violation = 3 }
+
+[[indicators]]
+id = "code_health"
+label = "Code health proxy"
+glyph = "shield"
+position = 10
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:code_health"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { low = 4.9, high = 7.1 }
