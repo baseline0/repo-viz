@@ -1,0 +1,149 @@
+default_install_hook_types:
+- pre-commit
+default_stages:
+- pre-commit
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.5.0
+  hooks:
+  - id: check-case-conflict
+    name: '[P3] Check for case conflicts'
+  - id: check-merge-conflict
+    name: '[P3] Check for merge conflicts'
+  - id: detect-private-key
+    name: '[P1] Detect private keys'
+  - id: check-added-large-files
+    name: '[P2] Check for large files'
+    args:
+    - --maxkb=1000
+  - id: check-yaml
+    name: '[P2] Validate YAML'
+    args:
+    - --unsafe
+- repo: https://github.com/astral-sh/ruff-pre-commit
+  rev: v0.16.8
+  hooks:
+  - id: ruff
+    name: '[P2] Lint with ruff'
+    args:
+    - --no-fix
+  - id: ruff-format
+    name: '[P2] Format with ruff'
+    args:
+    - --check
+- repo: https://github.com/rhysd/actionlint
+  rev: v1.6.26
+  hooks:
+  - id: actionlint
+    name: '[P1] Validate GitHub Actions workflows'
+    files: ^\.github/workflows/.*\.ya?ml$
+- repo: local
+  hooks:
+  - id: check-project-venv
+    name: '[P0] VIRTUAL_ENV must be this repo''s .venv'
+    entry: fleet hook --name check-project-venv
+    language: system
+    pass_filenames: false
+    always_run: true
+  - id: ci-sync-guard
+    name: '[P0] Prevent uv sync --group in CI'
+    entry: bash -c 'grep -r "uv sync --group" .github/workflows/ && exit 1 || true'
+    language: system
+    files: \.github/workflows/.*\.ya?ml$
+    pass_filenames: false
+    stages:
+    - pre-commit
+  - id: fleet-folder-deprecation
+    name: '[P0] Deprecation: .fleet/ folder (moved to centralized governance)'
+    entry: fleet hook --name check-fleet-folder-deprecation
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-commit
+  - id: repo-root-pattern
+    name: '[P1] Enforce REPO_ROOT pattern (no .parent outside constants.py)'
+    entry: fleet hook --name check-repo-root-pattern
+    language: system
+    pass_filenames: false
+    files: \.py$
+    stages:
+    - pre-commit
+  - id: python-syntax
+    name: '[P1] Check Python syntax'
+    entry: python -m py_compile
+    language: system
+    types:
+    - python
+  - id: ci-python-env
+    name: '[P1] Enforce uv run for Python in CI'
+    entry: bash -c 'grep -rP "(?<!uv )(?<!uv run )(?<![\w.-])python3? " .github/workflows/
+      && exit 1 || true'
+    language: system
+    files: \.github/workflows/.*\.ya?ml$
+    pass_filenames: false
+  - id: no-embedded-code
+    name: '[P1] Prohibit embedded code blocks in YAML/justfiles'
+    entry: fleet hook --name check-embedded-code
+    language: system
+    files: (justfile|\.github/workflows/.*\.ya?ml)$
+    pass_filenames: false
+    stages:
+    - pre-commit
+  - id: just-check
+    name: '[P0] Shift-left: just check (syntax, format, lint)'
+    entry: just check
+    language: system
+    pass_filenames: false
+    always_run: true
+    stages:
+    - pre-commit
+  - id: code-as-docs-markdown
+    name: "[P1] Code-as-Docs \u2014 Markdown Policy"
+    entry: fleet hook --name check-markdown-policy
+    language: system
+    files: \.md$
+    stages:
+    - pre-commit
+  - id: code-as-docs-todo
+    name: "[P1] Code-as-Docs \u2014 TODO Lifecycle"
+    entry: fleet hook --name check-todo-completion
+    language: system
+    files: (TODO|TASKS)\.md$
+    stages:
+    - pre-commit
+  - id: justfile-groups-nudge
+    name: '[P2] Nudge: Add [group(...)] to justfile recipes'
+    entry: fleet hook --name check-justfile-groups
+    language: system
+    files: (justfile|\.just)$
+    pass_filenames: false
+    stages:
+    - pre-commit
+  - id: justfile-groups-nudge
+    name: '[P2] Nudge: Add [group(...)] to justfile recipes'
+    entry: fleet hook --name check-justfile-groups
+    language: system
+    files: (justfile|\.just)$
+    pass_filenames: false
+    stages:
+    - pre-commit
+- repo: local
+  hooks:
+  - id: check-argparse-prohibition
+    name: '[P1] No argparse: CLIs use Typer'
+    entry: fleet hook --name check-argparse-prohibition
+    language: system
+    pass_filenames: false
+    files: \.py$
+    stages:
+    - pre-commit
+- repo: local
+  hooks:
+  - id: uv-lock-check
+    name: '[P1] uv.lock matches pyproject.toml (read-only; run uv lock to fix)'
+    entry: uv lock --check
+    language: system
+    pass_filenames: false
+    files: ^(pyproject\.toml|uv\.lock)$
+    stages:
+    - pre-commit
