@@ -110,8 +110,7 @@ class _Collector(ast.NodeVisitor):
         ]
         if any(name is not None and is_ingress_decorator(name) for name in decorators):
             tags.add("ingress")
-        if is_untyped(node):
-            tags.add("untyped")
+        tags.add("untyped" if is_untyped(node) else "typed")
         return frozenset(tags)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:

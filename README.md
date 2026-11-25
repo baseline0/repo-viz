@@ -12,8 +12,12 @@ Analysis is static-only: the snapshot records hierarchy, imports, calls, inherit
     just analyze /home/mark/projects/tool-core --out graph.json
     just summary graph.json
     just frontend-check
-    just serve graph.json
+    just check-indicators
+    just indicators graph.json indicators.json
+    just serve graph.json --indicators indicators.json
 
-`just serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves it with `/graph.json`, `/healthz` and `/readyz` on port 8080. The viewer accepts `?graph=<url>` to load a different snapshot.
+Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position and trigger to a dotted Python evaluator. Set `enabled = false` for an indicator that is not configured for a repo (coverage is off by default). Run `just indicators graph.json indicators.json render` (or `change`) to evaluate on view load or after a refactor.
 
-Snapshots are derived artifacts: regenerate them with `just analyze`, never edit them by hand.
+`just serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. The viewer accepts `?graph=<url>` to load a different snapshot.
+
+Snapshots and indicator results are derived artifacts: regenerate them, never edit them by hand.

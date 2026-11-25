@@ -1,7 +1,7 @@
 import type { Layout, Position } from './layout';
 import { portAngle } from './layout';
-import { SLOT_ORDER, sprite, type Slot } from './sprites';
-import type { Snapshot, StatusState, Track, VNode } from './types';
+import { sprite } from './sprites';
+import type { IndicatorConfig, IndicatorResult, Snapshot, Track, VNode } from './types';
 
 export type Lod = 'macro' | 'meso' | 'micro';
 
@@ -17,6 +17,8 @@ export interface SceneState {
   hover: string | null;
   calm: boolean;
   showStatus: boolean;
+  config: IndicatorConfig | null;
+  results: Map<string, IndicatorResult[]>;
 }
 
 const TRACK_COLORS: Record<Track, string> = {
@@ -161,8 +163,12 @@ export function drawScene(
     }
   }
 
-  // Polarized status strip.
-  if (state.showStatus) {
+  // Config-driven indicator strip. Slots come from /config.json; the icon color
+  // comes from that slot's palette and the state from /indicators.json.
+  if (state.showStatus && state.config) {
+    const defs = [...state.config.indicators]
+      .filter((item) => item.enabled)
+      .sort((a, b) => a.position - b.position);
     for (const id of layout.order) {
       const node = nodes.get(id);
       const position = layout.positions.get(id);
@@ -172,16 +178,16 @@ export function drawScene(
       if (r < 16) continue;
       const x = position.x * camera.k + camera.tx;
       const y = position.y * camera.k + camera.ty;
-      const states: StatusState[] = SLOT_ORDER.map((slot) => node.status[slot as Slot]);
-      for (let index = 0; index < SLOT_ORDER.length; index++) {
-        const value = states[index];
+      const results = state.results.get(id) ?? [];
+      for (const def of defs) {
+        const result = results.find((item) => item.indicator_id === def.id);
+        const value = result?.state ?? 'na';
         if (state.calm && (value === 'verified' || value === 'na')) continue;
-        const degrees = 320 + index * 16;
+        const degrees = (state.config.arc.first_deg + def.position * state.config.arc.step_deg) % 360;
         const angle = (degrees * Math.PI) / 180;
         const gx = x + Math.cos(angle) * (r + 9);
         const gy = y + Math.sin(angle) * (r + 9);
-        const image = sprite(SLOT_ORDER[index], value);
-        ctx.drawImage(image, gx - 10, gy - 10, 20, 20);
+        ctx.drawImage(sprite(def.glyph, def.colors[value]), gx - 10, gy - 10, 20, 20);
       }
     }
   }

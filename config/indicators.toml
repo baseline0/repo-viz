@@ -1,0 +1,84 @@
+version = 1
+
+[arc]
+start_deg = 315
+end_deg = 45
+step_deg = 12
+first_deg = 320
+
+[[indicators]]
+id = "security"
+label = "Security / trust"
+glyph = "shield"
+position = 0
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:security"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+
+[[indicators]]
+id = "boundary"
+label = "Boundary integrity"
+glyph = "gate"
+position = 1
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:boundary"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+
+[[indicators]]
+id = "complexity"
+label = "Efficiency / complexity"
+glyph = "bolt"
+position = 2
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:complexity"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+
+[[indicators]]
+id = "hygiene"
+label = "Typing hygiene"
+glyph = "check"
+position = 3
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:hygiene"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+
+[[indicators]]
+id = "sentinel"
+label = "Antipattern sentinel"
+glyph = "bug"
+position = 4
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:sentinel"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+
+[[indicators]]
+id = "coverage"
+label = "Test coverage"
+glyph = "gauge"
+position = 5
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:coverage"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 30
+
+[[indicators]]
+id = "churn"
+label = "Recent churn"
+glyph = "clock"
+position = 6
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:churn"
+enabled = false
+triggers = ["change"]
+timeout_seconds = 5

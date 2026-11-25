@@ -1,15 +1,18 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { DEFAULT_CONFIG, groupResults } from './lib/config';
   import { computeLayout, type Layout } from './lib/layout';
   import { Picker } from './lib/picking';
   import { drawScene, lodFor, type Camera, type Lod } from './lib/render';
-  import type { Snapshot, Track, VNode } from './lib/types';
+  import type { IndicatorArtifact, IndicatorConfig, IndicatorResult, Snapshot, Track, VNode } from './lib/types';
   import './app.css';
 
   let canvas: HTMLCanvasElement;
   let stage: HTMLDivElement;
   let snapshot: Snapshot | null = null;
   let layout: Layout | null = null;
+  let config: IndicatorConfig | null = null;
+  let resultByNode = new Map<string, IndicatorResult[]>();
   let camera: Camera = { k: 1, tx: 0, ty: 0 };
   let tracks = new Set<Track>(['data', 'control', 'security']);
   let selectedId: string | null = null;
@@ -27,7 +30,6 @@
   let lastY = 0;
   const picker = new Picker();
   const TRACKS: Track[] = ['data', 'control', 'security'];
-  const SLOTS = ['security', 'boundary', 'efficiency', 'hygiene', 'sentinel'] as const;
 
   $: selected = snapshot?.nodes.find((node) => node.id === selectedId) ?? null;
   $: lod = lodFor(camera.k) as Lod;
@@ -37,7 +39,7 @@
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const state = { tracks, selected: selectedId, hover: hoverId, calm, showStatus };
+    const state = { tracks, selected: selectedId, hover: hoverId, calm, showStatus, config, results: resultByNode };
     drawScene(ctx, snapshot, layout, camera, state, width, height);
     picker.clear();
     const pickCtx = picker.context;
@@ -156,9 +158,16 @@
     dpr = window.devicePixelRatio || 1;
     const source = new URLSearchParams(window.location.search).get('graph') ?? '/graph.json';
     try {
-      const response = await fetch(source);
+      const [response, configResponse, resultsResponse] = await Promise.all([
+        fetch(source),
+        fetch('/config.json'),
+        fetch('/indicators.json'),
+      ]);
       if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
       snapshot = (await response.json()) as Snapshot;
+      config = configResponse.ok ? ((await configResponse.json()) as IndicatorConfig) : DEFAULT_CONFIG;
+      const artifact = resultsResponse.ok ? ((await resultsResponse.json()) as IndicatorArtifact) : null;
+      resultByNode = groupResults(artifact);
       layout = computeLayout(snapshot);
       observer = new ResizeObserver(() => resize());
       observer.observe(stage);
@@ -233,10 +242,14 @@
           <dt>churn 30d</dt><dd>{selected.metrics.churn_30d}</dd>
           <dt>coverage</dt><dd>{selected.metrics.coverage === null ? 'audit required' : selected.metrics.coverage}</dd>
         </dl>
-        <p class="label">Status strip</p>
+        <p class="label">Indicators</p>
         <ul>
-          {#each SLOTS as slot}
-            <li>{slot}: <b>{selected.status[slot]}</b></li>
+          {#each config?.indicators ?? [] as def}
+            {@const result = (resultByNode.get(selected.id) ?? []).find((item) => item.indicator_id === def.id)}
+            <li>
+              {def.label}: <b>{result?.state ?? 'na'}</b>
+              {#if result?.evidence}<span class="muted">{String(result.value ?? '')} · {result.evidence}</span>{/if}
+            </li>
           {/each}
         </ul>
         {#if selected.tags.length}<p class="muted">tags: {selected.tags.join(', ')}</p>{/if}

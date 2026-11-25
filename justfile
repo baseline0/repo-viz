@@ -218,9 +218,18 @@ frontend-check: frontend-install
 frontend-build: frontend-install
     cd frontend && npm run build
 
+# Validate that the tracked indicator configuration parses and resolves.
 [group("dev")]
-serve GRAPH PORT="8080": frontend-build
-    uv run python -m repo_viz.cli serve "{{GRAPH}}" --port "{{PORT}}"
+check-indicators:
+    uv run python -c "from pathlib import Path; from repo_viz.indicators.spec import load_config; c = load_config(Path('config/indicators.toml')); print(f'{len(c.indicators)} indicators')"
+
+[group("dev")]
+indicators SNAPSHOT OUT="indicators.json" TRIGGER="render":
+    uv run python -m repo_viz.cli evaluate-indicators "{{SNAPSHOT}}" --out "{{OUT}}" --trigger "{{TRIGGER}}"
+
+[group("dev")]
+serve GRAPH PORT="8080" *ARGS: frontend-build
+    uv run python -m repo_viz.cli serve "{{GRAPH}}" --port "{{PORT}}" {{ARGS}}
 
 # Example: If this repo manages jobs
 # [group("fleet")]

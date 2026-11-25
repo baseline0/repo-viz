@@ -200,3 +200,61 @@ class GraphSnapshot:
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-ready mapping (enums as strings, tag sets as lists)."""
         return _jsonable(asdict(self))
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GraphSnapshot:
+        """Rebuild a snapshot from its JSON form, including nested dataclasses."""
+        nodes = tuple(
+            Node(
+                id=raw["id"],
+                label=raw["label"],
+                kind=NodeKind(raw["kind"]),
+                parent=raw.get("parent"),
+                lod_rank=raw["lod_rank"],
+                path=raw.get("path"),
+                tags=frozenset(raw.get("tags", [])),
+                metrics=Metrics(**raw["metrics"]),
+                status=StatusStrip(
+                    security=StatusState(raw["status"]["security"]),
+                    boundary=StatusState(raw["status"]["boundary"]),
+                    efficiency=StatusState(raw["status"]["efficiency"]),
+                    hygiene=StatusState(raw["status"]["hygiene"]),
+                    sentinel=StatusState(raw["status"]["sentinel"]),
+                    arc_start_deg=raw["status"]["arc_start_deg"],
+                    arc_end_deg=raw["status"]["arc_end_deg"],
+                ),
+            )
+            for raw in data["nodes"]
+        )
+        edges = tuple(
+            Edge(
+                source=raw["source"],
+                target=raw["target"],
+                kind=EdgeKind(raw["kind"]),
+                tracks=frozenset(Track(item) for item in raw["tracks"]),
+                weight=raw["weight"],
+                line=raw.get("line", 0),
+            )
+            for raw in data["edges"]
+        )
+        ports = tuple(
+            Port(
+                membrane=raw["membrane"],
+                peer=raw["peer"],
+                direction=raw["direction"],
+                kind=EdgeKind(raw["kind"]),
+                tracks=frozenset(Track(item) for item in raw["tracks"]),
+                count=raw["count"],
+                weight=raw["weight"],
+            )
+            for raw in data["ports"]
+        )
+        return cls(
+            source_repo=data["source_repo"],
+            source_commit=data["source_commit"],
+            analyzed_at=data["analyzed_at"],
+            nodes=nodes,
+            edges=edges,
+            ports=ports,
+            schema=data.get("schema", SCHEMA_VERSION),
+        )
