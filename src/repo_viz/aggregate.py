@@ -122,4 +122,7 @@ def aggregate(nodes: tuple[Node, ...], leaf_edges: Iterable[Edge]) -> Aggregatio
         for key, weight in sorted(macros.items(), key=lambda item: str(item[0]))
     )
     enriched = rollup_status(with_fan(nodes, leaf_edges))
-    return Aggregation(nodes=enriched, edges=macro_edges, ports=port_records)
+    # Keep leaf edges in the artifact so the micro LOD can draw exact call paths;
+    # macro edges are distinguishable by kind="aggregate".
+    all_edges = tuple(leaf_edges) + macro_edges
+    return Aggregation(nodes=enriched, edges=all_edges, ports=port_records)

@@ -14,6 +14,7 @@ from pathlib import Path
 import typer
 
 from repo_viz.snapshot import build_snapshot, write_snapshot
+from repo_viz.web import serve as serve_viewer
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 
@@ -41,6 +42,16 @@ def summary(snapshot_path: Path = typer.Argument(..., help="Snapshot JSON to sum
         f"{payload['schema']}: {len(payload['nodes'])} nodes, "
         f"{len(payload['edges'])} macro edges, {len(payload['ports'])} ports"
     )
+
+
+@app.command()
+def serve(
+    graph: Path = typer.Argument(..., help="Snapshot JSON to display"),
+    host: str = typer.Option("127.0.0.1", help="Bind address"),
+    port: int = typer.Option(8080, min=1, max=65535, help="Bind port"),
+) -> None:
+    """Serve the built viewer and a graph snapshot over HTTP."""
+    serve_viewer(graph, host=host, port=port)
 
 
 if __name__ == "__main__":

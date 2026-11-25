@@ -205,6 +205,23 @@ analyze REPO OUT="graph.json" DAYS="30":
 summary SNAPSHOT:
     uv run python -m repo_viz.cli summary "{{SNAPSHOT}}"
 
+# Frontend: npm install is guarded, matching the fleet's periodic-table-inspector recipe.
+[group("dev")]
+frontend-install:
+    @test -d frontend/node_modules || (cd frontend && npm install --no-audit --no-fund)
+
+[group("dev")]
+frontend-check: frontend-install
+    cd frontend && npm run check
+
+[group("dev")]
+frontend-build: frontend-install
+    cd frontend && npm run build
+
+[group("dev")]
+serve GRAPH PORT="8080": frontend-build
+    uv run python -m repo_viz.cli serve "{{GRAPH}}" --port "{{PORT}}"
+
 # Example: If this repo manages jobs
 # [group("fleet")]
 # queue-status:

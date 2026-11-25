@@ -7,7 +7,7 @@
 
 ## Decision
 
-`repo-viz/graph@1` is a regenerated JSON artifact containing hierarchy, leaf-derived macro edges, port counters and static metrics. The viewer only reads it. Coverage and agentic audit results are produced on demand when Mark clicks a component and are never part of the static pipeline.
+`repo-viz/graph@1` is a regenerated JSON artifact containing hierarchy, leaf edges, leaf-derived macro edges (`kind: aggregate`), port counters and static metrics. The viewer only reads it: macro edges drive the macro LOD and leaf edges drive the micro LOD. Coverage and agentic audit results are produced on demand when Mark clicks a component and are never part of the static pipeline.
 
 ## Consequences
 
