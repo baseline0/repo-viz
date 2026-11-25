@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet.local/repo-viz/graph.schema.json",
+  "title": "repo-viz graph snapshot",
+  "type": "object",
+  "required": ["schema", "source_repo", "source_commit", "analyzed_at", "nodes", "edges", "ports"],
+  "properties": {
+    "schema": { "const": "repo-viz/graph@1" },
+    "source_repo": { "type": "string" },
+    "source_commit": { "type": "string" },
+    "analyzed_at": { "type": "string" },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "kind", "lod_rank", "metrics", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["membrane", "file", "symbol"] },
+          "parent": { "type": ["string", "null"] },
+          "lod_rank": { "type": "integer", "minimum": 0, "maximum": 4 },
+          "path": { "type": ["string", "null"] },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "metrics": {
+            "type": "object",
+            "properties": {
+              "complexity": { "type": "integer", "minimum": 0 },
+              "loc": { "type": "integer", "minimum": 0 },
+              "fan_in": { "type": "integer", "minimum": 0 },
+              "fan_out": { "type": "integer", "minimum": 0 },
+              "churn_30d": { "type": "integer", "minimum": 0 },
+              "coverage": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          },
+          "status": {
+            "type": "object",
+            "required": ["security", "boundary", "efficiency", "hygiene", "sentinel", "arc_start_deg", "arc_end_deg"],
+            "properties": {
+              "security": { "$ref": "#/$defs/statusState" },
+              "boundary": { "$ref": "#/$defs/statusState" },
+              "efficiency": { "$ref": "#/$defs/statusState" },
+              "hygiene": { "$ref": "#/$defs/statusState" },
+              "sentinel": { "$ref": "#/$defs/statusState" },
+              "arc_start_deg": { "type": "number" },
+              "arc_end_deg": { "type": "number" }
+            }
+          }
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "kind", "tracks", "weight"],
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "kind": { "enum": ["aggregate", "import", "call", "inherit", "http", "event", "db", "secret", "exec"] },
+          "tracks": { "type": "array", "items": { "enum": ["data", "control", "security"] }, "minItems": 1 },
+          "weight": { "type": "integer", "minimum": 0 },
+          "line": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "ports": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["membrane", "peer", "direction", "kind", "tracks", "count", "weight"],
+        "properties": {
+          "membrane": { "type": "string" },
+          "peer": { "type": "string" },
+          "direction": { "enum": ["in", "out"] },
+          "kind": { "type": "string" },
+          "tracks": { "type": "array", "items": { "type": "string" } },
+          "count": { "type": "integer", "minimum": 1 },
+          "weight": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "statusState": { "enum": ["verified", "na", "partial", "violation"] }
+  }
+}

@@ -196,11 +196,14 @@ inventory-deps:
 # ============================================================================
 # Add custom recipes below. Organize with comments and groups.
 
-# Example: If this repo has a CLI app
-# [group("dev")]
-# serve:
-#     @echo "▶️  Starting dev server..."
-#     uv run python -m <your_module>.cli serve
+# Regenerate the versioned graph artifact for a checkout (derived; never hand-edit).
+[group("dev")]
+analyze REPO OUT="graph.json" DAYS="30":
+    uv run python -m repo_viz.cli analyze "{{REPO}}" --out "{{OUT}}" --days "{{DAYS}}"
+
+[group("dev")]
+summary SNAPSHOT:
+    uv run python -m repo_viz.cli summary "{{SNAPSHOT}}"
 
 # Example: If this repo manages jobs
 # [group("fleet")]
