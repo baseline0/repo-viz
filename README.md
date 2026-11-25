@@ -21,3 +21,5 @@ Membrane slots are generic: `config/indicators.toml` binds a glyph, palette posi
 `just serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. The viewer accepts `?graph=<url>` to load a different snapshot.
 
 Snapshots and indicator results are derived artifacts: regenerate them, never edit them by hand.
+
+See `CONTRIBUTING.md` for setup, test tiers (`tests/unit/`, `tests/integration/`, shared fixtures in `tests/conftest.py`), and the branch/commit workflow.

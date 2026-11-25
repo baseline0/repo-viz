@@ -1,0 +1,19 @@
+version = 1
+
+[arc]
+start_deg = 315
+end_deg = 45
+step_deg = 8
+first_deg = 320
+
+[[indicators]]
+id = "satd"
+label = "Self-admitted debt"
+glyph = "bug"
+position = 0
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:satd"
+enabled = true
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 1, violation = 2 }
