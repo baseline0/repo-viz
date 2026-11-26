@@ -19,11 +19,13 @@ import typer
 from mcp.server.mcpserver import MCPServer
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
+from repo_viz.audit import audit_from_artifacts
 from repo_viz.constants import REPO_ROOT
 from repo_viz.indicators.registry import validate_config
 from repo_viz.indicators.spec import load_config
 from repo_viz.operations import collect_metrics
 from repo_viz.snapshot import build_snapshot, snapshot_counts, write_snapshot
+from repo_viz.workitem import build_work_item_payload, write_work_item
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=False)
 WRITES_FILES = ToolAnnotations(
@@ -33,26 +35,40 @@ DATA_DIR = Path(os.environ.get("FLEET_DATA_DIR", str(REPO_ROOT / ".fleet")))
 CONFIG_PATH = REPO_ROOT / "config" / "indicators.toml"
 
 
-def _envelope(function: Callable[..., Any]) -> Callable[..., Any]:
-    """Return one JSON object for success or a structured failure."""
+def _envelope(view: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+    """Return one fleet read-envelope with success data or a structured failure."""
 
-    @functools.wraps(function)
-    def wrapped(*args: Any, **kwargs: Any) -> CallToolResult:
-        try:
-            payload: dict[str, Any] = {"ok": True, "data": function(*args, **kwargs)}
-        except Exception as cause:
-            payload = {
-                "ok": False,
-                "error": {"code": "EXECUTION_FAILED", "message": f"{type(cause).__name__}: {cause}"},
-            }
-        text = json.dumps(payload, indent=2, sort_keys=True)
-        return CallToolResult(
-            content=[TextContent(type="text", text=text)],
-            is_error=payload["ok"] is not True,
-            structured_content=payload,
-        )
+    def decorate(function: Callable[..., Any]) -> Callable[..., Any]:
+        @functools.wraps(function)
+        def wrapped(*args: Any, **kwargs: Any) -> CallToolResult:
+            try:
+                payload: dict[str, Any] = {
+                    "ok": True,
+                    "contract": "fleet.read-envelope",
+                    "version": "1.0",
+                    "source": "repo-viz",
+                    "view": view,
+                    "data": function(*args, **kwargs),
+                }
+            except Exception as cause:
+                payload = {
+                    "ok": False,
+                    "contract": "fleet.read-envelope",
+                    "version": "1.0",
+                    "source": "repo-viz",
+                    "view": view,
+                    "error": {"code": "EXECUTION_FAILED", "message": f"{type(cause).__name__}: {cause}"},
+                }
+            text = json.dumps(payload, indent=2, sort_keys=True)
+            return CallToolResult(
+                content=[TextContent(type="text", text=text)],
+                is_error=payload["ok"] is not True,
+                structured_content=payload,
+            )
 
-    return wrapped  # type: ignore[return-value]
+        return wrapped  # type: ignore[return-value]
+
+    return decorate
 
 
 def _artifact_path(value: str, default: Path) -> Path:
@@ -64,7 +80,7 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
     server = MCPServer("repo-viz", instructions="Repository structure and metric collection.")
 
     @server.tool(name="get_summary", annotations=READ_ONLY)
-    @_envelope
+    @_envelope("get_summary")
     def get_summary(snapshot: str = "") -> dict[str, Any]:
         """Return node, edge and port counts from a snapshot artifact."""
         path = _artifact_path(snapshot, DATA_DIR / "graph.json")
@@ -72,7 +88,7 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
         return snapshot_counts(payload)
 
     @server.tool(name="get_indicator_results", annotations=READ_ONLY)
-    @_envelope
+    @_envelope("get_indicator_results")
     def get_indicator_results(node_id: str = "", results: str = "") -> dict[str, Any]:
         """Return indicator results, optionally filtered to one node."""
         path = _artifact_path(results, DATA_DIR / "indicators.json")
@@ -82,21 +98,32 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
         return {"results": rows}
 
     @server.tool(name="get_indicator_config", annotations=READ_ONLY)
-    @_envelope
+    @_envelope("get_indicator_config")
     def get_indicator_config() -> dict[str, Any]:
         """Return slot positions, palettes, thresholds and evidence references."""
         return load_config(CONFIG_PATH).to_dict()
 
     @server.tool(name="check_indicator_config", annotations=READ_ONLY)
-    @_envelope
+    @_envelope("check_indicator_config")
     def check_indicator_config() -> dict[str, Any]:
         """Resolve every configured evaluator and report problems."""
         return validate_config(load_config(CONFIG_PATH))
 
+    @server.tool(name="audit_component", annotations=READ_ONLY)
+    @_envelope("audit_component")
+    def audit_component(node_id: str, snapshot: str = "", results: str = "") -> dict[str, Any]:
+        """Return an audit report for one component from existing artifacts."""
+        report = audit_from_artifacts(
+            _artifact_path(snapshot, DATA_DIR / "graph.json"),
+            _artifact_path(results, DATA_DIR / "indicators.json"),
+            node_id,
+        )
+        return report.to_dict()
+
     if allow_write:
 
         @server.tool(name="analyze", annotations=WRITES_FILES)
-        @_envelope
+        @_envelope("analyze")
         def analyze(repo: str, out: str = "") -> dict[str, Any]:
             """Write a versioned graph snapshot for a checkout."""
             path = _artifact_path(out, DATA_DIR / "graph.json")
@@ -106,7 +133,7 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
             return {"schema": snapshot.schema, "out": str(path), **snapshot_counts(snapshot.to_dict())}
 
         @server.tool(name="collect", annotations=WRITES_FILES)
-        @_envelope
+        @_envelope("collect")
         def collect(
             repo: str,
             out_dir: str = "",
@@ -122,6 +149,26 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
                 days=30,
                 coverage_path=coverage,
             )
+
+        @server.tool(name="prepare_work_item", annotations=WRITES_FILES)
+        @_envelope("prepare_work_item")
+        def prepare_work_item(
+            node_id: str,
+            snapshot: str = "",
+            results: str = "",
+            out_dir: str = "",
+        ) -> dict[str, Any]:
+            """Write a work-item request artifact for one audited component."""
+            graph_path = _artifact_path(snapshot, DATA_DIR / "graph.json")
+            results_path = _artifact_path(results, DATA_DIR / "indicators.json")
+            report = audit_from_artifacts(graph_path, results_path, node_id)
+            payload = build_work_item_payload(
+                report,
+                snapshot=str(graph_path),
+                results=str(results_path),
+            )
+            payload["artifacts"] = write_work_item(payload, _artifact_path(out_dir, DATA_DIR / "work-item"))
+            return payload
 
     return server
 

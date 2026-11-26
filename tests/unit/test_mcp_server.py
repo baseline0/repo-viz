@@ -9,8 +9,14 @@ import typer
 from repo_viz.mcp_server import app as mcp_app
 from repo_viz.mcp_server import build_server
 
-READ_TOOLS = {"get_summary", "get_indicator_results", "get_indicator_config", "check_indicator_config"}
-WRITE_TOOLS = {"analyze", "collect"}
+READ_TOOLS = {
+    "get_summary",
+    "get_indicator_results",
+    "get_indicator_config",
+    "check_indicator_config",
+    "audit_component",
+}
+WRITE_TOOLS = {"analyze", "collect", "prepare_work_item"}
 FORBIDDEN = {"approve", "approval", "override", "grant", "bypass", "elevate", "unlock", "authorize"}
 
 
@@ -56,6 +62,8 @@ def test_envelope_returns_config_and_structured_failure(tmp_path: object) -> Non
     config = asyncio.run(server.call_tool("get_indicator_config", {}))
     assert config.structured_content["ok"] is True  # type: ignore[index]
     assert config.structured_content["data"]["indicators"]  # type: ignore[index]
+    assert config.structured_content["contract"] == "fleet.read-envelope"  # type: ignore[index]
+    assert config.structured_content["view"] == "get_indicator_config"  # type: ignore[index]
 
     failure = asyncio.run(server.call_tool("get_summary", {"snapshot": str(tmp_path / "absent.json")}))
     assert failure.structured_content["ok"] is False  # type: ignore[index]
