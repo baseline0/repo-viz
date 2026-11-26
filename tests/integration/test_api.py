@@ -26,6 +26,10 @@ def test_probes_are_public(client: TestClient) -> None:
     assert ready.headers["Deprecation"] == "true"
 
 
+def test_mcp_requires_a_key(client: TestClient) -> None:
+    assert client.post("/mcp", json={"jsonrpc": "2.0", "method": "tools/list", "id": 1}).status_code == 401
+
+
 def test_collect_requires_a_key(client: TestClient, tmp_repo: Path, tmp_path: Path) -> None:
     response = client.post(
         "/api/v1/collect",

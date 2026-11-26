@@ -34,7 +34,7 @@ def _key_table() -> dict[str, dict[str, object]]:
 
 def authorize(method: str, path: str, headers: Mapping[str, str]) -> tuple[int, str] | None:
     """Authorize a request; 401 missing/invalid, 403 forbidden, 503 fail-closed."""
-    if not path.startswith("/api/"):
+    if not (path.startswith("/api/") or path == "/mcp"):
         return None
     token = headers.get("authorization", "")
     prefix = "bearer "

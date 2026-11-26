@@ -11,11 +11,19 @@
   "entry_points": {
     "cli": "repo-viz",
     "module": "repo_viz.cli",
+    "mcp": "repo-viz-mcp",
     "server": "uv run python -m repo_viz.cli api"
   },
   "inputs": {},
   "outputs": {},
   "provenance": "static analysis of a local checkout and configured indicator producers",
+  "mcp": {
+    "transport": "streamable-http",
+    "endpoint": "/mcp",
+    "port": 8080,
+    "read_only_by_default": true,
+    "stdio_entry_point": "repo-viz-mcp"
+  },
   "probes": {
     "liveness": "/healthz",
     "readiness": "/readyz"

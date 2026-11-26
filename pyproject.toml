@@ -8,11 +8,13 @@ dependencies = [
     "rich>=13.0.0",
     "fastapi>=0.165.0",
     "uvicorn>=0.54.0",
+    "mcp>=2.2.0,<3",
 ]
 
 [project.scripts]
 repo-viz = "repo_viz.cli:app"
 repo-viz-autogen = "repo_viz.autogen.cli:app"
+repo-viz-mcp = "repo_viz.mcp_server:app"
 
 [dependency-groups]
 dev = [

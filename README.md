@@ -20,7 +20,9 @@ The `rv-*` recipes are generated from the Typer app in `src/repo_viz/cli.py`; re
 
 Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position, trigger and context-specific thresholds to a dotted Python evaluator. Set `enabled = false` for an indicator whose producer is not configured for a repo (coverage, churn and code-health proxy are off by default — see ADR-006). Evaluators read producer values from `EvaluationContext.values` and never fabricate a result: absent data yields `na`. Coupling, hotspot and SATD are enabled (ADR-007); pass `--repo <checkout>` to `just rv-evaluate-indicators` to run the SATD and co-change producers before evaluation. Run with `change` to evaluate after a refactor.
 
-`just rv-serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. `just rv-api` starts the authenticated FastAPI service with `/api/v1/collect` for agent-driven collection. The viewer accepts `?graph=<url>` to load a different snapshot.
+`just rv-serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. `just rv-api` starts the authenticated FastAPI service with `/api/v1/collect` and Streamable HTTP MCP at `/mcp` for agent-driven collection. The viewer accepts `?graph=<url>` to load a different snapshot.
+
+MCP exposes four read tools (`get_summary`, `get_indicator_results`, `get_indicator_config`, `check_indicator_config`) by default; `analyze` and `collect` are registered only with `--allow-write` (or `REPO_VIZ_ALLOW_WRITE`). The stdio entry point is `repo-viz-mcp`; see ADR-010.
 
 Snapshots and indicator results are derived artifacts: regenerate them, never edit them by hand.
 
