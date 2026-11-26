@@ -31,6 +31,11 @@ def build_work_item_payload(
     """Build a self-contained request an operator can turn into a canonical WorkItem."""
     digest = hashlib.sha256(report.node_id.encode()).hexdigest()[:12]
     actions = list(report.suggested_actions) or ["Confirm the component needs no change."]
+    paths = [report.path or report.node_id]
+    description = (
+        f"Apply the audit-driven change in {paths[0]} so that the degraded indicators for "
+        f"{report.node_label} are resolved or explicitly deferred, with the repository test suite still passing."
+    )
     prompt = (
         f"Audit-driven change for {report.node_label} ({report.node_id}). "
         + " ".join(actions)
@@ -43,13 +48,20 @@ def build_work_item_payload(
         "status": STATUS,
         "repo": REPO,
         "prompt": prompt,
+        "description": description,
+        "intent_allowed_paths": paths,
+        "test_cmd": "uv run pytest tests/",
+        "suite_command": ["uv", "run", "pytest", "tests/"],
+        "base_sha": report.source_commit,
+        "lease_authorization": None,
+        "signoff_note": "Owner supplies the base commit pin and lease authorization before pickup.",
         "objective": f"Resolve the audit findings for {report.node_label}.",
         "acceptance_criteria": [
             f"Resolve or explicitly defer all {high} high and {medium} medium findings.",
             "Regenerate the repo-viz snapshot and indicator results for the changed component.",
             "just ci passes in repo-viz.",
         ],
-        "allowed_paths": [report.path or report.node_id],
+        "allowed_paths": paths,
         "evidence": {
             "snapshot": snapshot,
             "indicators": results,

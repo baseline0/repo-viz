@@ -45,6 +45,13 @@ def test_work_item_payload_is_unauthorized_and_bounded() -> None:
     assert payload["repo"] == "repo-viz"
     assert payload["id"].startswith("rv-")
     assert payload["allowed_paths"] == ["pkg/a.py"]
+    assert payload["intent_allowed_paths"] == ["pkg/a.py"]
+    assert payload["test_cmd"] == "uv run pytest tests/"
+    assert payload["suite_command"] == ["uv", "run", "pytest", "tests/"]
+    assert payload["base_sha"] == "sha"
+    assert payload["lease_authorization"] is None
+    assert len(payload["description"].split()) >= 15
+    assert "pkg/a.py" in payload["description"]
     assert payload["gate"] is None
     assert payload["gate_hash"] is None
     assert "graph.json" in payload["evidence"]["snapshot"]
