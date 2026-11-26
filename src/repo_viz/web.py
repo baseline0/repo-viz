@@ -1,17 +1,24 @@
-"""Minimal static server for the built viewer (FastAPI mount comes in Phase 5)."""
+"""Local static server for the viewer, with dev-only audit/work-item POST routes.
+
+The authenticated FastAPI service is in repo_viz.server; this handler is for local viewer development.
+"""
 
 from __future__ import annotations
 
 import json
+import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from repo_viz.audit import audit_from_artifacts
 from repo_viz.constants import REPO_ROOT
 from repo_viz.indicators.spec import IndicatorConfig
+from repo_viz.workitem import build_work_item_payload, write_work_item
 
 STATIC_DIR = REPO_ROOT / "src" / "repo_viz" / "static"
+DATA_DIR = Path(os.environ.get("FLEET_DATA_DIR", str(REPO_ROOT / ".fleet")))
 
 
 class ViewerHandler(SimpleHTTPRequestHandler):
@@ -53,6 +60,35 @@ class ViewerHandler(SimpleHTTPRequestHandler):
             self._respond(body, "application/json")
             return
         super().do_GET()
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        """Dev-only viewer actions; the fleet service exposes authenticated equivalents."""
+        path = self.path.split("?", 1)[0]
+        if path not in {"/api/audit", "/api/work-item"}:
+            self.send_error(404, "unknown action")
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            request = json.loads(self.rfile.read(length) or b"{}")
+            node = request.get("node", "")
+            if not node:
+                raise ValueError("node is required")
+            snapshot_arg = request.get("snapshot", "")
+            results_arg = request.get("results", "")
+            graph_path = Path(snapshot_arg) if snapshot_arg else DATA_DIR / "graph.json"
+            results_path = Path(results_arg) if results_arg else DATA_DIR / "indicators.json"
+            report = audit_from_artifacts(graph_path, results_path, node)
+            if path == "/api/audit":
+                payload: dict[str, Any] = report.to_dict()
+            else:
+                payload = build_work_item_payload(report, snapshot=str(graph_path), results=str(results_path))
+                payload["artifacts"] = write_work_item(payload, DATA_DIR / "work-item")
+            self._respond(json.dumps(payload).encode(), "application/json")
+        except Exception as cause:
+            self._respond(
+                json.dumps({"error": f"{type(cause).__name__}: {cause}"}).encode(),
+                "application/json",
+            )
 
     def _respond(self, body: bytes, content_type: str) -> None:
         self.send_response(200)

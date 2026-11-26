@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from repo_viz.cli import collect
+from repo_viz.cli import audit, collect, prepare_work_item
 
 router = APIRouter(prefix="/api/v1", tags=["CLI API"])
 
@@ -33,6 +33,118 @@ async def api_collect(
     """Collect a snapshot, producer values and indicator results for an agent."""
     try:
         result = await run_in_threadpool(collect, **payload.model_dump())
+    except typer.Exit as exc:
+        if exc.exit_code == 0:
+            result = None
+        elif exc.exit_code == 2:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_request", "message": "Invalid command usage", "details": {"exit_code": 2}},
+            )
+        elif exc.exit_code == 3:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "conflict",
+                    "message": "Resource conflict or prerequisite failure",
+                    "details": {"exit_code": 3},
+                },
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "command_failed",
+                    "message": "Command terminated with non-zero status",
+                    "details": {"exit_code": exc.exit_code},
+                },
+            )
+    except typer.Abort:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "command_aborted", "message": "Command aborted"},
+        )
+    except (click.UsageError, typer.BadParameter):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_request", "message": "Invalid request parameters"},
+        )
+    if result is None:
+        return {"status": "ok"}
+    return result
+
+
+class AuditRequest(BaseModel):
+    node: str
+    snapshot: str = ""
+    results: str = ""
+    out: str = ""
+    json_output: bool = False
+
+
+@router.post("/audit")
+async def api_audit(
+    payload: AuditRequest,
+) -> Any:
+    """Audit one component from existing artifacts."""
+    try:
+        result = await run_in_threadpool(audit, **payload.model_dump())
+    except typer.Exit as exc:
+        if exc.exit_code == 0:
+            result = None
+        elif exc.exit_code == 2:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "invalid_request", "message": "Invalid command usage", "details": {"exit_code": 2}},
+            )
+        elif exc.exit_code == 3:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "conflict",
+                    "message": "Resource conflict or prerequisite failure",
+                    "details": {"exit_code": 3},
+                },
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "command_failed",
+                    "message": "Command terminated with non-zero status",
+                    "details": {"exit_code": exc.exit_code},
+                },
+            )
+    except typer.Abort:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "command_aborted", "message": "Command aborted"},
+        )
+    except (click.UsageError, typer.BadParameter):
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "invalid_request", "message": "Invalid request parameters"},
+        )
+    if result is None:
+        return {"status": "ok"}
+    return result
+
+
+class PrepareWorkItemRequest(BaseModel):
+    node: str
+    snapshot: str = ""
+    results: str = ""
+    out_dir: str = ""
+    json_output: bool = False
+
+
+@router.post("/work-item")
+async def api_prepare_work_item(
+    payload: PrepareWorkItemRequest,
+) -> Any:
+    """Prepare a human-authorized work-item request from an audit."""
+    try:
+        result = await run_in_threadpool(prepare_work_item, **payload.model_dump())
     except typer.Exit as exc:
         if exc.exit_code == 0:
             result = None

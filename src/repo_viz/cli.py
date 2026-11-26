@@ -12,12 +12,15 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 import typer
 
+from repo_viz.audit import audit_from_artifacts, write_report
 from repo_viz.autogen.api_expose import expose
+from repo_viz.constants import REPO_ROOT
 from repo_viz.discovery import list_python_files
 from repo_viz.indicators.producers import collect_values, coverage_from_json
 from repo_viz.indicators.registry import evaluate, validate_config, validate_results, write_results
@@ -27,8 +30,15 @@ from repo_viz.operations import collect_metrics
 from repo_viz.output import JsonOption, command_output
 from repo_viz.snapshot import build_snapshot, snapshot_counts, write_snapshot
 from repo_viz.web import serve as serve_viewer
+from repo_viz.workitem import build_work_item_payload, write_work_item
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+DATA_DIR = Path(os.environ.get("FLEET_DATA_DIR", str(REPO_ROOT / ".fleet")))
+
+
+def _artifact_path(value: str, name: str) -> Path:
+    """Resolve an optional artifact path against the data directory."""
+    return Path(value) if value else DATA_DIR / name
 
 
 @app.command()
@@ -187,6 +197,56 @@ def api(
         out_stream.echo(f"serving API on {host}:{port}")
         out_stream.data = {"host": host, "port": port}
     serve_api(host=host, port=port)
+
+
+@app.command()
+@expose(path="/api/v1/audit", method="POST")
+def audit(
+    node: str = typer.Option(..., "--node", help="Node id to audit"),
+    snapshot: str = typer.Option("", "--snapshot"),
+    results: str = typer.Option("", "--results"),
+    out: str = typer.Option("", "--out"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Audit one component from existing artifacts."""
+    with command_output(json_output) as out_stream:
+        report = audit_from_artifacts(
+            _artifact_path(snapshot, "graph.json"),
+            _artifact_path(results, "indicators.json"),
+            node,
+        )
+        if out:
+            write_report(report, Path(out))
+        payload = report.to_dict()
+        out_stream.echo(f"{len(report.findings)} findings for {report.node_label}")
+        out_stream.data = payload
+    return payload
+
+
+@app.command()
+@expose(path="/api/v1/work-item", method="POST")
+def prepare_work_item(
+    node: str = typer.Option(..., "--node", help="Node id to prepare a request for"),
+    snapshot: str = typer.Option("", "--snapshot"),
+    results: str = typer.Option("", "--results"),
+    out_dir: str = typer.Option("", "--out-dir"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Prepare a human-authorized work-item request from an audit."""
+    with command_output(json_output) as out_stream:
+        graph_path = _artifact_path(snapshot, "graph.json")
+        results_path = _artifact_path(results, "indicators.json")
+        report = audit_from_artifacts(graph_path, results_path, node)
+        payload = build_work_item_payload(
+            report,
+            snapshot=str(graph_path),
+            results=str(results_path),
+        )
+        paths = write_work_item(payload, _artifact_path(out_dir, "work-item")) if out_dir else {}
+        payload["artifacts"] = paths
+        out_stream.echo(f"prepared {payload['id']} ({payload['status']})")
+        out_stream.data = payload
+    return payload
 
 
 if __name__ == "__main__":

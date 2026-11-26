@@ -106,6 +106,22 @@ def evaluate(config: IndicatorConfig, context: EvaluationContext) -> tuple[Indic
     return tuple(results)
 
 
+def results_from_dict(payload: Mapping[str, Any]) -> tuple[IndicatorResult, ...]:
+    """Rebuild stored indicator results from their JSON form."""
+    return tuple(
+        IndicatorResult(
+            indicator_id=row["indicator_id"],
+            node_id=row["node_id"],
+            trigger=row["trigger"],
+            state=State(row["state"]),
+            value=row["value"],
+            evidence=row["evidence"],
+            computed_at=row["computed_at"],
+        )
+        for row in payload["results"]
+    )
+
+
 def validate_results(payload: Mapping[str, Any]) -> dict[str, Any]:
     """Check an indicator-results artifact without a JSON-schema dependency."""
     problems: list[str] = []

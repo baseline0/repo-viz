@@ -16,6 +16,7 @@
   let camera: Camera = { k: 1, tx: 0, ty: 0 };
   let tracks = new Set<Track>(['data', 'control', 'security']);
   let selectedId: string | null = null;
+  let auditReport: Record<string, unknown> | null = null;
   let hoverId: string | null = null;
   let calm = false;
   let showStatus = true;
@@ -33,6 +34,13 @@
 
   $: selected = snapshot?.nodes.find((node) => node.id === selectedId) ?? null;
   $: lod = lodFor(camera.k) as Lod;
+  $: findings = (auditReport?.findings ?? []) as {
+    indicator_id: string;
+    state: string;
+    severity: string;
+    action: string;
+  }[];
+  $: workItemId = (auditReport?.work_item as { id: string } | undefined)?.id ?? '';
 
   function render(): void {
     if (!snapshot || !layout || !canvas) return;
@@ -81,8 +89,19 @@
     render();
   }
 
+  async function postAction(path: string): Promise<void> {
+    if (!selectedId) return;
+    const response = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ node: selectedId }),
+    });
+    auditReport = await response.json();
+  }
+
   function choose(node: VNode): void {
     selectedId = node.id;
+    auditReport = null;
     const position = layout?.positions.get(node.id);
     if (position) {
       camera = {
@@ -253,8 +272,19 @@
           {/each}
         </ul>
         {#if selected.tags.length}<p class="muted">tags: {selected.tags.join(', ')}</p>{/if}
-        <button disabled title="Phase 4">Audit component</button>
-        <button disabled title="Phase 4">Dispatch fix / refactor</button>
+        <button on:click={() => postAction('/api/audit')}>Audit component</button>
+        <button on:click={() => postAction('/api/work-item')}>Prepare work-item request</button>
+        {#if auditReport}
+          <p class="label">Audit</p>
+          <ul>
+            {#each findings as finding}
+              <li><b>{finding.severity}</b> {finding.indicator_id}: {finding.action}</li>
+            {/each}
+          </ul>
+          {#if workItemId}
+            <p class="muted mono">request: {workItemId}</p>
+          {/if}
+        {/if}
       {:else}
         <p class="muted">Click a membrane, port or cell to inspect it.</p>
       {/if}

@@ -64,6 +64,63 @@ def test_summary_prints_counts(tmp_repo: Path, cli_runner: CliRunner, tmp_path: 
     assert payload["edges"] >= 0
 
 
+def test_audit_and_work_item_commands(tmp_repo: Path, cli_runner: CliRunner, tmp_path: Path) -> None:
+    graph = tmp_path / "graph.json"
+    results = tmp_path / "indicators.json"
+    assert (
+        cli_runner.invoke(
+            app,
+            ["analyze", "--repo", str(tmp_repo), "--out", str(graph)],
+        ).exit_code
+        == 0
+    )
+    assert (
+        cli_runner.invoke(
+            app,
+            ["evaluate-indicators", "--snapshot", str(graph), "--out", str(results), "--repo", str(tmp_repo)],
+        ).exit_code
+        == 0
+    )
+    audit = cli_runner.invoke(
+        app,
+        [
+            "audit",
+            "--node",
+            "pkg/api.py",
+            "--snapshot",
+            str(graph),
+            "--results",
+            str(results),
+            "--json",
+        ],
+    )
+    assert audit.exit_code == 0, audit.output
+    report = json.loads(audit.output)
+    assert report["node_id"] == "pkg/api.py"
+    assert "findings" in report
+
+    out_dir = tmp_path / "work-item"
+    prepared = cli_runner.invoke(
+        app,
+        [
+            "prepare-work-item",
+            "--node",
+            "pkg/api.py",
+            "--snapshot",
+            str(graph),
+            "--results",
+            str(results),
+            "--out-dir",
+            str(out_dir),
+            "--json",
+        ],
+    )
+    assert prepared.exit_code == 0, prepared.output
+    payload = json.loads(prepared.output)
+    assert payload["status"] == "idea"
+    assert (out_dir / "work-item.yaml").is_file()
+
+
 def test_check_indicators_resolves_compute_targets() -> None:
     result = CliRunner().invoke(app, ["check-indicators", "--json"])
     assert result.exit_code == 0, result.output
