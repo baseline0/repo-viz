@@ -50,7 +50,7 @@ known-first-party = ["repo_viz"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = "--strict-markers --durations=5"
 markers = [
     "unit: deterministic, isolated; assigned from tests/unit/",
     "integration: cross-repo or service interaction; assigned from tests/integration/",
