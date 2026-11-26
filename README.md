@@ -28,4 +28,6 @@ Snapshots and indicator results are derived artifacts: regenerate them, never ed
 
 `arch_drift`, `cognitive_friction` and `cochange` are enabled with thresholds derived from repo-viz's own graph; their evidence tiers and citations are in ADR-008. `--repo` supplies the SATD and co-change producers, and `--coverage` can supply a pytest-cov JSON file for the coverage slot.
 
+The container image is built from the `Dockerfile` (Node stage builds the viewer, Python stage serves the API and MCP). Its Kubernetes overlays and digest pins live in the `infrastructure` repo under `deploy/tools/overlays/*/tool-repo-viz/`; the image is named `localhost/tool-repo-viz` and is referenced by digest, never by tag. Applying or promoting the overlay is an owner step.
+
 See `CONTRIBUTING.md` for setup, test tiers (`tests/unit/`, `tests/integration/`, shared fixtures in `tests/conftest.py`), and the branch/commit workflow.
