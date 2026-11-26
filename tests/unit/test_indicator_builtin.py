@@ -74,6 +74,14 @@ def test_churn_respects_change_set() -> None:
     assert churn(_node(metrics=Metrics(churn_30d=50)), context).state is State.VIOLATION
 
 
+def test_threshold_boundary_is_inclusive() -> None:
+    node = _node(metrics=Metrics(complexity=10))
+    assert complexity(node, _context()).state is State.PARTIAL
+    assert complexity(_node(metrics=Metrics(complexity=15)), _context()).state is State.VIOLATION
+    health = _node()
+    assert code_health(health, _context(values={"code_health": {"pkg/file.py": 7.1}})).state is State.PARTIAL
+
+
 def test_literature_slots_return_na_without_producers() -> None:
     node = _node()
     assert satd(node, _context()).state is State.NA

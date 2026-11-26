@@ -8,7 +8,7 @@
 #
 # PAVED ROADS:
 # - Cache cleaning (clean, clean-cache) vendored from fleet-base
-# - Domain-specific recipes in local just/ modules (just/dispatch.just, just/agents.just)
+# - Domain-specific recipes live in this justfile so generators can discover them from the Typer app
 # - Typer CLI apps (src/<repo>/cli.py) handle multi-step workflows, job dispatch
 # - Job queuing via uv run <module> commands (agent dispatch, WorkItem lifecycle)
 #
@@ -36,10 +36,7 @@ import 'just/repo-push.just'
 # Optional: Import shared utilities (pre-commit, commit, CI checks)
 # import? 'just/shared.just'
 
-# Optional: Import domain-specific modules (create your own just/*.just files)
-# import? 'just/agents.just'        # If this repo dispatches agents
-# import? 'just/governance.just'    # If this repo has governance responsibilities
-# import? 'just/dispatch.just'      # If this repo manages job queues
+# Generated recipes belong in just/generated.just; hand-written recipes stay here.
 
 # ============================================================================
 # [dev] Development: Type check, lint, format
@@ -89,8 +86,8 @@ test-integration:
 
 [group("testing")]
 test-fast:
-    @echo "🧪 Running fast tests (marked @pytest.mark.fast)..."
-    uv run pytest tests/ -v -m fast
+    @echo "🧪 Running fast (unit) tests..."
+    uv run pytest tests/unit -v -m unit
 
 # ============================================================================
 # [audit] Code quality: imports, boundaries, governance rules
@@ -221,7 +218,7 @@ frontend-build: frontend-install
 # Validate that the tracked indicator configuration parses and resolves.
 [group("dev")]
 check-indicators:
-    uv run python -c "from pathlib import Path; from repo_viz.indicators.spec import load_config; c = load_config(Path('config/indicators.toml')); print(f'{len(c.indicators)} indicators')"
+    uv run python -m repo_viz.cli check-indicators --config config/indicators.toml
 
 [group("dev")]
 indicators SNAPSHOT OUT="indicators.json" TRIGGER="render" REPO="":

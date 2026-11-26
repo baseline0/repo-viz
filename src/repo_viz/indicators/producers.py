@@ -26,6 +26,11 @@ def satd_from_source(source: str) -> int:
         return 0
 
 
+def collect_values(repo_root: Path, rel_paths: Iterable[str]) -> dict[str, dict[str, float]]:
+    """Build every producer's value map for one checkout."""
+    return {"satd": satd_counts(repo_root, rel_paths)}
+
+
 def satd_counts(repo_root: Path, rel_paths: Iterable[str]) -> dict[str, float]:
     """Count SATD markers for each tracked Python file."""
     result: dict[str, float] = {}

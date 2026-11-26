@@ -1,5 +1,8 @@
 """Built-in evaluators. Each is a pure function of a node and its context.
 
+Threshold rule: a value at or above a threshold takes that state. For codes where
+higher is better, a value at or below the low/high break-even takes the worse state.
+
 ## Specification Map
 
 - ``security`` / ``boundary`` — qualitative tag-based evaluators.
@@ -91,9 +94,9 @@ def complexity(node: Node, context: EvaluationContext) -> Evaluation:
         return Evaluation(State.NA, 0, "no complexity evidence")
     partial = _threshold(context, "partial", _COMPLEXITY_PARTIAL)
     violation = _threshold(context, "violation", _COMPLEXITY_VIOLATION)
-    if value > violation:
+    if value >= violation:
         return Evaluation(State.VIOLATION, value, f"complexity {value} > {violation}")
-    if value > partial:
+    if value >= partial:
         return Evaluation(State.PARTIAL, value, f"complexity {value} > {partial}")
     return Evaluation(State.VERIFIED, value, "complexity within budget")
 
@@ -132,9 +135,9 @@ def churn(node: Node, context: EvaluationContext) -> Evaluation:
     if context.trigger == "change" and node.path not in context.changed_paths:
         return Evaluation(State.NA, None, "path not in this change set")
     value = node.metrics.churn_30d
-    if value > _threshold(context, "violation", _CHURN_VIOLATION):
+    if value >= _threshold(context, "violation", _CHURN_VIOLATION):
         return Evaluation(State.VIOLATION, value, f"{value} touches in window")
-    if value > _threshold(context, "partial", _CHURN_PARTIAL):
+    if value >= _threshold(context, "partial", _CHURN_PARTIAL):
         return Evaluation(State.PARTIAL, value, f"{value} touches in window")
     return Evaluation(State.VERIFIED, value, "low churn")
 
@@ -145,9 +148,9 @@ def coupling(node: Node, context: EvaluationContext) -> Evaluation:
     value = produced if produced is not None else node.metrics.fan_in + node.metrics.fan_out
     if value <= 0:
         return Evaluation(State.NA, 0, "no coupling evidence")
-    if value > _threshold(context, "violation", _COUPLING_VIOLATION):
+    if value >= _threshold(context, "violation", _COUPLING_VIOLATION):
         return Evaluation(State.VIOLATION, value, "high coupling")
-    if value > _threshold(context, "partial", _COUPLING_PARTIAL):
+    if value >= _threshold(context, "partial", _COUPLING_PARTIAL):
         return Evaluation(State.PARTIAL, value, "elevated coupling")
     return Evaluation(State.VERIFIED, value, "coupling within budget")
 
@@ -160,9 +163,9 @@ def hotspot(node: Node, context: EvaluationContext) -> Evaluation:
     )
     if value <= 0:
         return Evaluation(State.NA, 0, "no hotspot evidence")
-    if value > _threshold(context, "violation", _HOTSPOT_VIOLATION):
+    if value >= _threshold(context, "violation", _HOTSPOT_VIOLATION):
         return Evaluation(State.VIOLATION, value, "hotspot above budget")
-    if value > _threshold(context, "partial", _HOTSPOT_PARTIAL):
+    if value >= _threshold(context, "partial", _HOTSPOT_PARTIAL):
         return Evaluation(State.PARTIAL, value, "hotspot elevated")
     return Evaluation(State.VERIFIED, value, "low hotspot score")
 
@@ -184,8 +187,8 @@ def code_health(node: Node, context: EvaluationContext) -> Evaluation:
     value = _produced(context, "code_health", node)
     if value is None:
         return Evaluation(State.NA, None, "external health producer not configured")
-    if value < _threshold(context, "low", _CH_LOW):
+    if value <= _threshold(context, "low", _CH_LOW):
         return Evaluation(State.VIOLATION, value, "below the low-health break-even")
-    if value < _threshold(context, "high", _CH_HIGH):
+    if value <= _threshold(context, "high", _CH_HIGH):
         return Evaluation(State.PARTIAL, value, "between low and high break-even")
     return Evaluation(State.VERIFIED, value, "above the high break-even")

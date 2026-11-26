@@ -55,7 +55,17 @@ def test_indicators_use_the_repo_producer(tmp_repo: Path, cli_runner: CliRunner,
 
 def test_summary_prints_counts(tmp_repo: Path, cli_runner: CliRunner, tmp_path: Path) -> None:
     graph = tmp_path / "graph.json"
-    assert cli_runner.invoke(app, ["analyze", str(tmp_repo), "--out", str(graph)]).exit_code == 0
-    result = cli_runner.invoke(app, ["summary", str(graph)])
+    assert cli_runner.invoke(app, ["analyze", str(tmp_repo), "--out", str(graph), "--json"]).exit_code == 0
+    result = cli_runner.invoke(app, ["summary", str(graph), "--json"])
     assert result.exit_code == 0, result.output
-    assert "repo-viz/graph@1" in result.output
+    payload = json.loads(result.output)
+    assert payload["nodes"] > 0
+    assert payload["edges"] >= 0
+
+
+def test_check_indicators_resolves_compute_targets() -> None:
+    result = CliRunner().invoke(app, ["check-indicators", "--json"])
+    assert result.exit_code == 0, result.output
+    report = json.loads(result.output)
+    assert report["ok"] is True
+    assert report["enabled"] >= 8

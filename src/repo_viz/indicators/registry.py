@@ -42,6 +42,25 @@ def resolve(compute: str) -> Evaluator:
     return cast(Evaluator, evaluator)
 
 
+def validate_config(config: IndicatorConfig) -> dict[str, Any]:
+    """Check the config version and resolve every dotted evaluator target."""
+    problems: list[str] = []
+    if config.version != 1:
+        problems.append(f"unsupported indicator config version: {config.version}")
+    for indicator in config.indicators:
+        try:
+            resolve(indicator.compute)
+        except Exception as cause:
+            problems.append(f"{indicator.id}: {type(cause).__name__}: {cause}")
+    return {
+        "version": config.version,
+        "indicators": len(config.indicators),
+        "enabled": sum(1 for item in config.indicators if item.enabled),
+        "problems": problems,
+        "ok": not problems,
+    }
+
+
 def _evaluate_one(evaluator: Evaluator, node: Node, context: EvaluationContext, timeout: int) -> Evaluation:
     """Evaluate one node, enforcing the configured budget on the main thread."""
     if timeout <= 0 or threading.current_thread() is not threading.main_thread():

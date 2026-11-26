@@ -65,6 +65,15 @@ def build_snapshot_from_sources(
     )
 
 
+def snapshot_counts(payload: Mapping[str, Any]) -> dict[str, int]:
+    """Return artifact counts from a snapshot mapping; pure and JSON-ready."""
+    return {
+        "nodes": len(payload["nodes"]),
+        "edges": len(payload["edges"]),
+        "ports": len(payload["ports"]),
+    }
+
+
 def churn_counts(repo_root: Path, *, days: int) -> dict[str, int]:
     """Count tracked-file touches in the last ``days`` days."""
     log = git_output(repo_root, "log", f"--since={days} days ago", "--name-only", "--pretty=format:")

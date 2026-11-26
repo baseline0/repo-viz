@@ -32,7 +32,7 @@ Run `just test` for the hermetic unit gate; `just test-integration` for the loca
 
 - Spec first: dataclasses or enums with invariants, then valid and invalid tests. Add a `## Specification Map` to the module docstring and delete redundant prose last.
 - Document headers are required for root governance and `docs/**` files: `agentic-id`, `doc-class`, `lifecycle`, `authority` before the H1.
-- Every CLI uses Typer with a `--json` option; argparse is banned.
+- Every CLI uses Typer with a `--json` option (`repo_viz.output.JsonOption`); argparse is banned. Keep command bodies thin: parse options, call a pure function, then put JSON-serializable data on `CommandOutput.data`. Generated just recipes and FastAPI routes will read the same Typer app.
 - Indicators are config entries in `config/indicators.toml` bound to dotted `module:function` evaluators. An evaluator receives `(node, context)` and returns `(state, value, evidence)`. Missing producer data yields `na`, never a pass. Thresholds are context-specific and live in config, not in code defaults alone.
 
 ## Derived artifacts
