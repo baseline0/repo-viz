@@ -26,6 +26,7 @@
             "type": "object",
             "properties": {
               "complexity": { "type": "integer", "minimum": 0 },
+              "cognitive_complexity": { "type": "integer", "minimum": 0 },
               "loc": { "type": "integer", "minimum": 0 },
               "fan_in": { "type": "integer", "minimum": 0 },
               "fan_out": { "type": "integer", "minimum": 0 },

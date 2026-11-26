@@ -3,7 +3,7 @@ version = 1
 [arc]
 start_deg = 315
 end_deg = 45
-step_deg = 8
+step_deg = 5
 first_deg = 320
 
 [[indicators]]
@@ -97,6 +97,7 @@ triggers = ["render", "change"]
 timeout_seconds = 5
 # repo-viz fan-in+fan-out p90=3, p95=5; context-specific priors, not universals.
 thresholds = { partial = 2, violation = 4 }
+evidence = "2610.01611 survey: structural design metrics in 92.3% of primary studies"
 
 [[indicators]]
 id = "hotspot"
@@ -110,6 +111,7 @@ triggers = ["render", "change"]
 timeout_seconds = 5
 # Corrected churn x coupling p90=6, p95=10, max=30 on the current snapshot.
 thresholds = { partial = 6, violation = 12 }
+evidence = "2607.01850 case study: hotspots and change coupling align with maintenance pain"
 
 [[indicators]]
 id = "satd"
@@ -123,6 +125,7 @@ triggers = ["render", "change"]
 timeout_seconds = 5
 # Producer: tokenize-based TODO/FIXME/HACK/XXX/BUG comment scan via --repo.
 thresholds = { partial = 1, violation = 3 }
+evidence = "2609.13485 empirical study: over 60% of SATD is test-covered; co-change matters"
 
 [[indicators]]
 id = "code_health"
@@ -135,3 +138,44 @@ enabled = false
 triggers = ["render", "change"]
 timeout_seconds = 5
 thresholds = { low = 4.9, high = 7.1 }
+evidence = "2610.33343 experiment (n=24,620): break-even CH 4.9-7.1; CH gain is not proven maintainability"
+
+# Structural and agent work-sizing slots from ADR-008. Disabled until producers are wired.
+[[indicators]]
+id = "arch_drift"
+label = "Architectural drift"
+glyph = "gate"
+position = 11
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:arch_drift"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 5, violation = 12 }
+evidence = "2610.01611 survey: structural design metrics dominate degradation measurement (92.3%)"
+
+[[indicators]]
+id = "cognitive_friction"
+label = "Cognitive complexity friction"
+glyph = "bolt"
+position = 12
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:cognitive_friction"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 8, violation = 20 }
+evidence = "2607.01850 case study: code health and hotspots guide maintenance prioritisation"
+
+[[indicators]]
+id = "cochange"
+label = "Change proneness / co-change"
+glyph = "clock"
+position = 13
+colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
+compute = "repo_viz.indicators.builtin:cochange"
+enabled = false
+triggers = ["render", "change"]
+timeout_seconds = 5
+thresholds = { partial = 2, violation = 5 }
+evidence = "2607.01850 case study: change coupling aligns with practitioner-perceived friction"

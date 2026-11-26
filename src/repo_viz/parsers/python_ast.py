@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from repo_viz.classify import classify_call, is_ingress_decorator
-from repo_viz.metrics import cyclomatic, is_untyped, loc
+from repo_viz.metrics import cognitive_complexity, cyclomatic, is_untyped, loc
 from repo_viz.model import Edge, EdgeKind, Metrics, Node, NodeKind, Track
 
 EXTERNAL_ID = "external"
@@ -83,6 +83,7 @@ class _Collector(ast.NodeVisitor):
         lod_rank: int,
         tags: frozenset[str],
         complexity: int = 0,
+        cognitive: int = 0,
     ) -> str:
         if symbol_id in self.symbol_ids:
             symbol_id = f"{symbol_id}@{getattr(node, 'lineno', 0)}"
@@ -97,7 +98,7 @@ class _Collector(ast.NodeVisitor):
                 lod_rank=lod_rank,
                 path=None,
                 tags=tags,
-                metrics=Metrics(complexity=complexity, loc=loc(node)),
+                metrics=Metrics(complexity=complexity, cognitive_complexity=cognitive, loc=loc(node)),
             )
         )
         return symbol_id
@@ -117,7 +118,15 @@ class _Collector(ast.NodeVisitor):
         class_id = f"{self.module_id}::{node.name}"
         method_count = sum(isinstance(item, _FUNCTIONS) for item in node.body)
         tags = {"god_class"} if method_count > _GOD_CLASS_METHODS else set()
-        class_id = self._add_symbol(class_id, node, self.scope, 3, frozenset(tags), cyclomatic(node.body))
+        class_id = self._add_symbol(
+            class_id,
+            node,
+            self.scope,
+            3,
+            frozenset(tags),
+            cyclomatic(node.body),
+            cognitive_complexity(node.body),
+        )
         self.defined[node.name] = class_id
         for item in node.body:
             if isinstance(item, _FUNCTIONS):
@@ -129,6 +138,7 @@ class _Collector(ast.NodeVisitor):
                     4,
                     self._function_tags(item),
                     cyclomatic(item.body),
+                    cognitive_complexity(item.body),
                 )
                 self.defined[f"{node.name}.{item.name}"] = method_id
         self.scopes.append(class_id)
@@ -152,6 +162,7 @@ class _Collector(ast.NodeVisitor):
                 4,
                 self._function_tags(node),
                 cyclomatic(node.body),
+                cognitive_complexity(node.body),
             )
             self.defined.setdefault(node.name, symbol_id)
         else:

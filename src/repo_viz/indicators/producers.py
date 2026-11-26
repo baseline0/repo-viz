@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import io
 import re
+import subprocess
 import tokenize
+from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -26,9 +28,46 @@ def satd_from_source(source: str) -> int:
         return 0
 
 
-def collect_values(repo_root: Path, rel_paths: Iterable[str]) -> dict[str, dict[str, float]]:
+def cochange_counts(commits: Iterable[Iterable[str]]) -> dict[str, float]:
+    """Count co-edit partners per file from a sequence of commit file lists."""
+    counts: dict[str, float] = defaultdict(float)
+    for commit in commits:
+        files = sorted(set(commit))
+        for index, left in enumerate(files):
+            for right in files[index + 1 :]:
+                counts[left] += 1
+                counts[right] += 1
+    return dict(counts)
+
+
+def cochange_from_git(repo_root: Path, *, days: int = 30) -> dict[str, float]:
+    """Count co-changes from recent git commits; only Python paths are considered."""
+    completed = subprocess.run(
+        ["git", "log", f"--since={days} days ago", "--format=%x00", "--name-only"],
+        cwd=repo_root,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return {}
+    commits = [
+        tuple(line for line in chunk.splitlines() if line.strip().endswith(".py"))
+        for chunk in completed.stdout.decode("utf-8", errors="replace").split("\0")
+    ]
+    return cochange_counts(commits)
+
+
+def collect_values(
+    repo_root: Path,
+    rel_paths: Iterable[str],
+    *,
+    days: int = 30,
+) -> dict[str, dict[str, float]]:
     """Build every producer's value map for one checkout."""
-    return {"satd": satd_counts(repo_root, rel_paths)}
+    return {
+        "satd": satd_counts(repo_root, rel_paths),
+        "cochange": cochange_from_git(repo_root, days=days),
+    }
 
 
 def satd_counts(repo_root: Path, rel_paths: Iterable[str]) -> dict[str, float]:

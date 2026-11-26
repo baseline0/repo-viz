@@ -64,6 +64,7 @@ class Metrics:
     """Quantities computed statically; coverage is filled in only by an on-demand audit."""
 
     complexity: int = 0
+    cognitive_complexity: int = 0
     loc: int = 0
     fan_in: int = 0
     fan_out: int = 0
@@ -71,7 +72,7 @@ class Metrics:
     coverage: float | None = None
 
     def __post_init__(self) -> None:
-        for name in ("complexity", "loc", "fan_in", "fan_out", "churn_30d"):
+        for name in ("complexity", "cognitive_complexity", "loc", "fan_in", "fan_out", "churn_30d"):
             if getattr(self, name) < 0:
                 raise ValueError(f"{name} must be non-negative")
         if self.coverage is not None and not 0.0 <= self.coverage <= 1.0:

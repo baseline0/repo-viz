@@ -19,12 +19,15 @@ const DEFS = [
   ['hotspot', 'Change hotspot', 'gauge', 8],
   ['satd', 'Self-admitted debt', 'bug', 9],
   ['code_health', 'Code health proxy', 'shield', 10],
+  ['arch_drift', 'Architectural drift', 'gate', 11],
+  ['cognitive_friction', 'Cognitive complexity friction', 'bolt', 12],
+  ['cochange', 'Change proneness / co-change', 'clock', 13],
 ] as const;
 
 /** Fallback keeps the viewer usable when /config.json is unavailable. */
 export const DEFAULT_CONFIG: IndicatorConfig = {
   version: 1,
-  arc: { start_deg: 315, end_deg: 45, step_deg: 8, first_deg: 320 },
+  arc: { start_deg: 315, end_deg: 45, step_deg: 5, first_deg: 320 },
   indicators: DEFS.map(([id, label, glyph, position]) => ({
     id,
     label,

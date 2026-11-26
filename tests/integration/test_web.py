@@ -53,4 +53,4 @@ def test_probes_and_artifacts(viewer_url: str) -> None:
     with urllib.request.urlopen(viewer_url + "/graph.json", timeout=2) as response:
         assert json.loads(response.read())["schema"] == "repo-viz/graph@1"
     with urllib.request.urlopen(viewer_url + "/config.json", timeout=2) as response:
-        assert len(json.loads(response.read())["indicators"]) == 11
+        assert len(json.loads(response.read())["indicators"]) == 14

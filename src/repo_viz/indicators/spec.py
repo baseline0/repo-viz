@@ -61,6 +61,7 @@ class Indicator:
     triggers: frozenset[str] = frozenset(VALID_TRIGGERS)
     timeout_seconds: int = 5
     thresholds: Mapping[str, float] = field(default_factory=dict)
+    evidence: str = ""
 
     def __post_init__(self) -> None:
         if not self.id or ":" not in self.compute:
@@ -121,6 +122,7 @@ class IndicatorConfig:
                     "enabled": item.enabled,
                     "triggers": sorted(item.triggers),
                     "thresholds": dict(item.thresholds),
+                    "evidence": item.evidence,
                 }
                 for item in self.indicators
             ],
@@ -183,6 +185,7 @@ def load_config(path: Path) -> IndicatorConfig:
             triggers=frozenset(item.get("triggers", VALID_TRIGGERS)),
             timeout_seconds=int(item.get("timeout_seconds", 5)),
             thresholds=dict(item.get("thresholds", {})),
+            evidence=str(item.get("evidence", "")),
         )
         for item in raw["indicators"]
     )

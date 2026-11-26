@@ -12,6 +12,7 @@ from __future__ import annotations
 import ast
 from collections import Counter
 from collections.abc import Iterable
+from itertools import chain
 
 from repo_viz.model import Edge, Node
 
@@ -31,6 +32,64 @@ def cyclomatic(statements: Iterable[ast.stmt]) -> int:
             elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
                 score += len(node.generators)
     return score
+
+
+class _CognitiveVisitor(ast.NodeVisitor):
+    """Nesting-aware complexity: each decision adds one plus its nesting depth."""
+
+    def __init__(self) -> None:
+        self.score = 0
+        self.nesting = 0
+
+    def _block(self, statements: Iterable[ast.stmt]) -> None:
+        self.nesting += 1
+        for statement in statements:
+            self.visit(statement)
+        self.nesting -= 1
+
+    def _decision(self, node: ast.AST, *blocks: Iterable[ast.stmt]) -> None:
+        self.score += 1 + self.nesting
+        for child in ast.iter_child_nodes(node):
+            if not isinstance(child, ast.stmt):
+                self.visit(child)
+        for block in blocks:
+            self._block(block)
+
+    def visit_If(self, node: ast.If) -> None:
+        self._decision(node, node.body, node.orelse)
+
+    def visit_For(self, node: ast.For) -> None:
+        self._decision(node, node.body, node.orelse)
+
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> None:
+        self._decision(node, node.body, node.orelse)
+
+    def visit_While(self, node: ast.While) -> None:
+        self._decision(node, node.body, node.orelse)
+
+    def visit_Try(self, node: ast.Try) -> None:
+        self._decision(
+            node,
+            chain(node.body, *(handler.body for handler in node.handlers), node.orelse, node.finalbody),
+        )
+
+    def visit_IfExp(self, node: ast.IfExp) -> None:
+        self._decision(node)
+
+    def visit_BoolOp(self, node: ast.BoolOp) -> None:
+        self.score += len(node.values) - 1
+        self.generic_visit(node)
+
+
+def cognitive_complexity(node: ast.AST | Iterable[ast.stmt]) -> int:
+    """Return nesting-aware cognitive complexity for an AST node or statement list."""
+    visitor = _CognitiveVisitor()
+    if isinstance(node, ast.AST):
+        visitor.visit(node)
+    else:
+        for statement in node:
+            visitor.visit(statement)
+    return visitor.score
 
 
 def loc(node: ast.AST) -> int:
@@ -78,6 +137,7 @@ def with_fan(nodes: tuple[Node, ...], edges: Iterable[Edge]) -> tuple[Node, ...]
                 tags=node.tags,
                 metrics=type(metrics)(
                     complexity=metrics.complexity,
+                    cognitive_complexity=metrics.cognitive_complexity,
                     loc=metrics.loc,
                     fan_in=fan_in,
                     fan_out=fan_out,

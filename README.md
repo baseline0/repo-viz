@@ -22,4 +22,6 @@ Membrane slots are generic: `config/indicators.toml` binds a glyph, palette posi
 
 Snapshots and indicator results are derived artifacts: regenerate them, never edit them by hand.
 
+`arch_drift`, `cognitive_friction` and `cochange` are registered but disabled until their producers are wired for a target repo; their evidence tiers and citations are in ADR-008, and `--repo` supplies the SATD and co-change producers.
+
 See `CONTRIBUTING.md` for setup, test tiers (`tests/unit/`, `tests/integration/`, shared fixtures in `tests/conftest.py`), and the branch/commit workflow.

@@ -14,12 +14,18 @@ higher is better, a value at or below the low/high break-even takes the worse st
 from __future__ import annotations
 
 from repo_viz.indicators.spec import Evaluation, EvaluationContext, State
-from repo_viz.model import Node
+from repo_viz.model import EdgeKind, Node
 
 _COMPLEXITY_PARTIAL = 10
 _COMPLEXITY_VIOLATION = 15
 _CHURN_PARTIAL = 5
 _CHURN_VIOLATION = 20
+_DRIFT_PARTIAL = 5
+_DRIFT_VIOLATION = 12
+_FRICTION_PARTIAL = 8
+_FRICTION_VIOLATION = 20
+_COCHANGE_PARTIAL = 2
+_COCHANGE_VIOLATION = 5
 _COVERAGE_PARTIAL = 0.5
 _COVERAGE_VERIFIED = 0.8
 _SATD_PARTIAL = 1
@@ -192,3 +198,53 @@ def code_health(node: Node, context: EvaluationContext) -> Evaluation:
     if value <= _threshold(context, "high", _CH_HIGH):
         return Evaluation(State.PARTIAL, value, "between low and high break-even")
     return Evaluation(State.VERIFIED, value, "above the high break-even")
+
+
+def arch_drift(node: Node, context: EvaluationContext) -> Evaluation:
+    """Cross-boundary macro edges touching a membrane and its descendants."""
+    if node.kind.value != "membrane":
+        return Evaluation(State.NA, None, "structural drift is a membrane-level signal")
+    members = {node.id}
+    growing = True
+    while growing:
+        growing = False
+        for candidate in context.graph.nodes:
+            if candidate.parent in members and candidate.id not in members:
+                members.add(candidate.id)
+                growing = True
+    value = sum(
+        1
+        for edge in context.graph.edges
+        if edge.kind is EdgeKind.AGGREGATE and (edge.source in members or edge.target in members)
+    )
+    if value <= 0:
+        return Evaluation(State.NA, 0, "no cross-boundary evidence")
+    if value >= _threshold(context, "violation", _DRIFT_VIOLATION):
+        return Evaluation(State.VIOLATION, value, "many cross-boundary interactions")
+    if value >= _threshold(context, "partial", _DRIFT_PARTIAL):
+        return Evaluation(State.PARTIAL, value, "elevated cross-boundary interactions")
+    return Evaluation(State.VERIFIED, value, "few cross-boundary interactions")
+
+
+def cognitive_friction(node: Node, context: EvaluationContext) -> Evaluation:
+    """Nesting-aware complexity multiplied by the enclosing file's churn."""
+    value = node.metrics.cognitive_complexity * _churn_for(node, context)
+    if value <= 0:
+        return Evaluation(State.NA, 0, "no cognitive complexity evidence")
+    if value >= _threshold(context, "violation", _FRICTION_VIOLATION):
+        return Evaluation(State.VIOLATION, value, "high cognitive friction")
+    if value >= _threshold(context, "partial", _FRICTION_PARTIAL):
+        return Evaluation(State.PARTIAL, value, "elevated cognitive friction")
+    return Evaluation(State.VERIFIED, value, "low cognitive friction")
+
+
+def cochange(node: Node, context: EvaluationContext) -> Evaluation:
+    """Observed co-edit frequency; requires a git-history producer."""
+    value = _produced(context, "cochange", node)
+    if value is None:
+        return Evaluation(State.NA, None, "co-change producer not configured")
+    if value >= _threshold(context, "violation", _COCHANGE_VIOLATION):
+        return Evaluation(State.VIOLATION, value, "frequent co-change")
+    if value >= _threshold(context, "partial", _COCHANGE_PARTIAL):
+        return Evaluation(State.PARTIAL, value, "co-change observed")
+    return Evaluation(State.VERIFIED, value, "little co-change")
