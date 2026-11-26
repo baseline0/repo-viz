@@ -147,3 +147,13 @@ repos:
     files: ^(pyproject\.toml|uv\.lock)$
     stages:
     - pre-commit
+- repo: local
+  hooks:
+  - id: autogen-sync
+    name: '[P1] Generated recipes and API routes match the Typer app'
+    entry: bash -c 'just check-endpoints && just gen-check'
+    language: system
+    pass_filenames: false
+    files: (src/repo_viz/cli\.py|just/generated\.just|api_routes_autogen\.py)$
+    stages:
+    - pre-commit

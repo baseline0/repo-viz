@@ -9,16 +9,18 @@ Analysis is static-only: the snapshot records hierarchy, imports, calls, inherit
     uv sync --dev
     just test
     just check
-    just analyze /home/mark/projects/tool-core --out graph.json
-    just summary graph.json
+    just rv-analyze /home/mark/projects/tool-core --out graph.json
+    just rv-summary graph.json
     just frontend-check
-    just check-indicators
-    just indicators graph.json indicators.json
-    just serve graph.json --indicators indicators.json
+    just rv-check-indicators
+    just rv-evaluate-indicators graph.json --out indicators.json --repo /home/mark/projects/repo-viz
+    just rv-serve graph.json
 
-Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position, trigger and context-specific thresholds to a dotted Python evaluator. Set `enabled = false` for an indicator whose producer is not configured for a repo (coverage, churn and code-health proxy are off by default — see ADR-006). Evaluators read producer values from `EvaluationContext.values` and never fabricate a result: absent data yields `na`. Coupling, hotspot and SATD are enabled (ADR-007); pass `REPO=<checkout>` to `just indicators` to run the SATD producer before evaluation, e.g. `just indicators graph.json indicators.json render /home/mark/projects/repo-viz`. Run with `change` to evaluate after a refactor.
+The `rv-*` recipes are generated from the Typer app in `src/repo_viz/cli.py`; regenerate them with `just generate-endpoints` and verify with `just check-endpoints`.
 
-`just serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. The viewer accepts `?graph=<url>` to load a different snapshot.
+Membrane slots are generic: `config/indicators.toml` binds a glyph, palette position, trigger and context-specific thresholds to a dotted Python evaluator. Set `enabled = false` for an indicator whose producer is not configured for a repo (coverage, churn and code-health proxy are off by default — see ADR-006). Evaluators read producer values from `EvaluationContext.values` and never fabricate a result: absent data yields `na`. Coupling, hotspot and SATD are enabled (ADR-007); pass `--repo <checkout>` to `just rv-evaluate-indicators` to run the SATD and co-change producers before evaluation. Run with `change` to evaluate after a refactor.
+
+`just rv-serve` builds the viewer into `src/repo_viz/static/` (git-ignored) and serves `/graph.json`, `/config.json`, `/indicators.json`, `/healthz` and `/readyz` on port 8080. `just rv-api` starts the authenticated FastAPI service with `/api/v1/collect` for agent-driven collection. The viewer accepts `?graph=<url>` to load a different snapshot.
 
 Snapshots and indicator results are derived artifacts: regenerate them, never edit them by hand.
 

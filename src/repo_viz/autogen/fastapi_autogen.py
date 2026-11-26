@@ -1,0 +1,661 @@
+"""Auto-generate FastAPI routes from Typer CLI apps marked with @expose_api or @expose_api_secure.
+
+Inspects Typer app structure and generates FastAPI router with:
+- Automatic Pydantic request models from function signatures
+- Type inference from CLI parameter annotations
+- Async routes with thread-safe delegation to CLI functions
+- Security-aware route generation with access control and audit logging
+- Full type safety and documentation
+
+Usage:
+    from repo_viz.autogen.fastapi_autogen import generate_fastapi_from_typer
+
+    # Generate routes from your Typer app (supports both @expose_api and @expose_api_secure)
+    routes_code = generate_fastapi_from_typer(
+        app=my_cli_app,
+        prefix="/api/v1",
+        header="Auto-generated API routes"
+    )
+
+Command line:
+    uv run python -m repo_viz.autogen.fastapi_autogen \\
+        --app src.cli:MyCLI \\
+        --output src/api_routes.py \\
+        --prefix /api/v1
+"""
+
+from __future__ import annotations
+
+import inspect
+import json
+import sys
+from collections.abc import Sequence
+from enum import Enum
+from pathlib import Path
+from types import UnionType
+from typing import Annotated, Any, Union, get_args, get_origin, get_type_hints
+
+import typer
+from fastapi import params
+from pydantic import BaseModel
+
+app = typer.Typer(help="Generate FastAPI routes from Typer CLI app", add_completion=False)
+
+
+class AppLoadError(RuntimeError):
+    """The `module:attr` Typer app could not be imported."""
+
+
+class UnsupportedAnnotationError(ValueError):
+    """Raised when a CLI parameter cannot be safely converted to an API model."""
+
+
+FASTAPI_METADATA_CLASSES = (
+    params.Param,
+    params.Depends,
+)
+
+
+def _validate_annotated_metadata(metadata: Sequence[object], param_name: str = "") -> None:
+    context = f" for parameter {param_name!r}" if param_name else ""
+    for item in metadata:
+        if isinstance(item, FASTAPI_METADATA_CLASSES) or (
+            isinstance(item, type) and issubclass(item, FASTAPI_METADATA_CLASSES)
+        ):
+            raise UnsupportedAnnotationError(
+                f"FastAPI parameter metadata is not supported for CLI-derived HTTP endpoints{context}: {item!r}"
+            )
+        prompt = getattr(item, "prompt", None)
+        if prompt is True or (isinstance(prompt, (str, bool)) and prompt):
+            raise UnsupportedAnnotationError(f"Interactive CLI prompts cannot be exposed as HTTP endpoints{context}")
+        if getattr(item, "hide_input", None):
+            raise UnsupportedAnnotationError(f"Interactive CLI passwords cannot be exposed as HTTP endpoints{context}")
+
+
+def _iter_commands(typer_app: typer.Typer, prefix: str = "") -> list[tuple[str, Any]]:
+    """Iterate through all commands in a Typer app (including subgroups)."""
+    commands = []
+
+    for command in typer_app.registered_commands:
+        if command.callback is not None:
+            commands.append((prefix, command))
+
+    for group in typer_app.registered_groups:
+        if group.typer_instance is None:
+            continue
+        group_name = group.name or ""
+        subprefix = f"{prefix}{group_name}-" if group_name else prefix
+        commands.extend(_iter_commands(group.typer_instance, subprefix))
+
+    return commands
+
+
+def _type_code(annotation: object, param_name: str = "") -> str:
+    """Convert Python type annotation to string code."""
+    origin = get_origin(annotation)
+    args = get_args(annotation)
+
+    if origin is Annotated:
+        underlying, *metadata = args
+        _validate_annotated_metadata(metadata, param_name=param_name)
+        return _type_code(underlying, param_name=param_name)
+
+    if origin is None:
+        return _atomic_type_code(annotation, param_name=param_name)
+
+    if origin in (list, set):
+        item_type = _type_code(args[0], param_name=param_name) if args else "str"
+        return f"{origin.__name__}[{item_type}]"
+
+    if origin is dict:
+        if len(args) != 2:
+            return "dict[str, Any]"
+        key_type = _type_code(args[0], param_name=param_name)
+        val_type = _type_code(args[1], param_name=param_name)
+        return f"dict[{key_type}, {val_type}]"
+
+    if origin is Union or origin is UnionType:
+        if len(args) == 2 and type(None) in args:
+            val_type = next(arg for arg in args if arg is not type(None))
+            return f"{_type_code(val_type, param_name=param_name)} | None"
+        rendered = " | ".join(_type_code(arg, param_name=param_name) for arg in args)
+        return rendered
+
+    if origin is tuple:
+        if args:
+            rendered_args = ", ".join(_type_code(arg, param_name=param_name) for arg in args)
+            return f"tuple[{rendered_args}]"
+        return "tuple[Any, ...]"
+
+    return _atomic_type_code(annotation, param_name=param_name)
+
+
+def _atomic_type_code(annotation: object, param_name: str = "") -> str:
+    if annotation is type(None) or annotation is None:
+        return "None"
+
+    if annotation is Any:
+        return "Any"
+
+    if annotation in (str, int, float, bool, bytes):
+        return annotation.__name__
+
+    if annotation is Path:
+        return "Path"
+
+    if isinstance(annotation, type):
+        if issubclass(annotation, (Enum, BaseModel)):
+            return annotation.__name__
+        if issubclass(annotation, (str, int, float, bool)):
+            return annotation.__name__
+
+    context = f" for parameter {param_name!r}" if param_name else ""
+    raise UnsupportedAnnotationError(
+        f"Unsupported CLI parameter annotation{context}: {annotation!r}. "
+        "Supported: str, int, float, bool, Path, Enum, list[T], dict[K, V], Optional[T], Pydantic BaseModel."
+    )
+
+
+def _validate_param_default(default: Any, param_name: str = "") -> None:
+    context = f" for parameter {param_name!r}" if param_name else ""
+    prompt = getattr(default, "prompt", None)
+    if prompt is True or (isinstance(prompt, (str, bool)) and prompt):
+        raise UnsupportedAnnotationError(f"Interactive CLI prompts cannot be exposed as HTTP endpoints{context}")
+    if getattr(default, "hide_input", None):
+        raise UnsupportedAnnotationError(f"Interactive CLI passwords cannot be exposed as HTTP endpoints{context}")
+
+
+def _collect_type_imports(annotation: object, imports: set[str]) -> None:
+    """Collect necessary imports for custom types (Enum, BaseModel) used in annotations."""
+    origin = get_origin(annotation)
+    if origin is Annotated:
+        _collect_type_imports(get_args(annotation)[0], imports)
+        return
+    if origin is not None:
+        for arg in get_args(annotation):
+            _collect_type_imports(arg, imports)
+        return
+    if isinstance(annotation, type) and annotation.__module__ not in ("builtins", "typing") and annotation is not Path:
+        imports.add(f"from {annotation.__module__} import {annotation.__name__}")
+
+
+def _render_default(value) -> str:
+    """Render a default as source code; Path has a PosixPath repr that is not importable."""
+    if isinstance(value, Path):
+        return f"Path({str(value)!r})"
+    if isinstance(value, str):
+        # Double quotes keep generated modules already formatted by ruff.
+        return json.dumps(value)
+    return repr(value)
+
+
+def _extract_default_value(param_default):
+    """Extract actual default value from parameter.
+
+    Handles Typer Option/Argument objects that wrap the real default.
+    Treats Ellipsis (...) as "required" (no default).
+    """
+    if param_default is inspect.Parameter.empty:
+        return inspect.Parameter.empty
+
+    # If it's a Typer Option/Argument, extract the .default attribute
+    if hasattr(param_default, "default"):
+        default_val = param_default.default
+        # Typer uses Ellipsis (...) to mean "required"
+        if default_val is Ellipsis:
+            return inspect.Parameter.empty
+        return default_val
+
+    return param_default
+
+
+def _call_reference(callback: Any) -> tuple[str, str]:
+    """The import line and the expression that reach `callback` from the generated module.
+
+    A plain function is imported by name. A bound method (a command a CLI class registers on the app) is reached through
+    the module-level instance that owns it, so the generated module imports that name and calls the method on it.
+    Raises ValueError when no module-level name holds the instance, because the generated module could not reach it.
+    """
+    if not inspect.ismethod(callback):
+        return f"from {callback.__module__} import {callback.__name__}", callback.__name__
+    module = sys.modules[callback.__module__]
+    owners = sorted(name for name, value in vars(module).items() if value is callback.__self__)
+    if not owners:
+        raise ValueError(
+            f"{callback.__module__}.{callback.__name__} is a bound method, and its instance is not a module-level name; "
+            "assign the instance to a module-level name (for example _cli = Cls()) so the generated routes can call it"
+        )
+    return f"from {callback.__module__} import {owners[0]}", f"{owners[0]}.{callback.__name__}"
+
+
+def generate_fastapi_from_typer(
+    app: typer.Typer,
+    prefix: str = "/api/v1",
+    header: str | None = None,
+) -> str:
+    """Generate FastAPI router code from Typer app.
+
+    Supports both @expose_api (legacy, no auth) and @expose_api_secure (with access control).
+
+    Args:
+        app: Typer application instance
+        prefix: FastAPI router prefix (e.g., "/api/v1")
+        header: Custom header comment (default: auto-generated notice)
+
+    Returns:
+        Complete Python code for FastAPI router
+    """
+    if header is None:
+        header = "# AUTO-GENERATED BY repo_viz.autogen.fastapi_autogen - DO NOT EDIT MANUALLY\n# Regenerate with: just gen-api"
+
+    # First pass: collect commands, imports, and metadata
+    imports_to_add: set[str] = set()
+    has_routes = False
+    has_secure_routes = False
+    has_field_import = False
+    commands_data = []
+
+    for prefix_str, command in _iter_commands(app):
+        callback = command.callback
+        metadata = getattr(callback, "__api_expose__", None)
+
+        if not metadata:
+            continue
+
+        has_routes = True
+        is_secured = metadata.get("secured", False)
+        if is_secured:
+            has_secure_routes = True
+
+        # Add the import that reaches the command
+        import_line, reference = _call_reference(callback)
+        imports_to_add.add(import_line)
+
+        hints = get_type_hints(callback)
+        sig = inspect.signature(callback)
+        for name, parameter in sig.parameters.items():
+            if name in ("self", "cls"):
+                continue
+            annotation = hints.get(name, parameter.annotation)
+            if annotation is inspect.Parameter.empty:
+                raise UnsupportedAnnotationError(
+                    f"Parameter {name!r} on command {callback.__name__!r} missing type annotation"
+                )
+            _validate_param_default(parameter.default, param_name=name)
+            type_code = _type_code(annotation, param_name=name)
+            actual_default = _extract_default_value(parameter.default)
+            if actual_default is inspect.Parameter.empty and type_code.startswith("list["):
+                has_field_import = True
+            _collect_type_imports(annotation, imports_to_add)
+
+        model_name = f"{callback.__name__.title().replace('_', '')}Request"
+
+        commands_data.append(
+            {
+                "callback": callback,
+                "reference": reference,
+                "metadata": metadata,
+                "model_name": model_name,
+                "hints": hints,
+                "is_secured": is_secured,
+            }
+        )
+
+    # Add security imports if needed
+    if has_secure_routes:
+        imports_to_add.add("from repo_viz.auth import AccessChecker, AccessDenied, admin_request_is_authorized")
+        imports_to_add.add("from repo_viz.observability import StructuredLogger, get_logger")
+
+    # Group and consolidate imports from the same module
+    grouped_from: dict[str, set[str]] = {}
+    other_imports: set[str] = set()
+    for imp in imports_to_add:
+        if imp.startswith("from ") and " import " in imp:
+            mod_part, sym_part = imp[len("from ") :].split(" import ", 1)
+            for s in sym_part.split(","):
+                grouped_from.setdefault(mod_part.strip(), set()).add(s.strip())
+        else:
+            other_imports.add(imp)
+
+    consolidated_command_imports: list[str] = []
+    for mod in sorted(grouped_from.keys()):
+        syms = ", ".join(sorted(grouped_from[mod]))
+        consolidated_command_imports.append(f"from {mod} import {syms}")
+    consolidated_command_imports.extend(sorted(other_imports))
+
+    # Build output in correct order: imports, helpers, router, then models+handlers
+    lines = [
+        header,
+        "",
+        '"""FastAPI routes generated from a Typer CLI. Do not edit: regenerate instead."""',
+        "",
+    ]
+
+    if has_secure_routes:
+        lines.append("import os")
+    lines.extend(
+        [
+            "from pathlib import Path",
+            "from typing import Any",
+            "",
+            "import click",
+            "import typer",
+        ]
+    )
+
+    fastapi_symbols = ["APIRouter", "HTTPException"]
+    if has_secure_routes:
+        fastapi_symbols.extend(["Depends", "Request"])
+    lines.append(f"from fastapi import {', '.join(sorted(fastapi_symbols))}")
+
+    pydantic_symbols = ["BaseModel"]
+    if has_field_import:
+        pydantic_symbols.append("Field")
+    lines.append(f"from pydantic import {', '.join(sorted(pydantic_symbols))}")
+    lines.append("from starlette.concurrency import run_in_threadpool")
+
+    # Add command function imports
+    if consolidated_command_imports:
+        lines.append("")
+        lines.extend(consolidated_command_imports)
+
+    # Add security helper functions and logger
+    if has_secure_routes:
+        lines.extend(
+            [
+                "",
+                "",
+                "async def get_access_checker() -> 'AccessChecker':",
+                "    from repo_viz.settings import FleetSettings, load_settings",
+                "    settings = load_settings(FleetSettings)",
+                "    policy = AccessChecker.get_default_policy(environment=settings.fleet_environment)",
+                "    # Override defaults with environment settings",
+                "    policy['internal_orgs'] = settings.internal_orgs",
+                "    policy['internal_networks'] = settings.internal_networks",
+                "    return AccessChecker(policy, environment=settings.fleet_environment)",
+                "",
+                "",
+                "logger = StructuredLogger(get_logger(__name__))",
+            ]
+        )
+
+    # Add router definition
+    lines.extend(
+        [
+            "",
+            f'router = APIRouter(prefix="{prefix}", tags=["CLI API"])',
+        ]
+    )
+
+    if not has_routes:
+        lines.append("\n# No commands marked with @expose_api() found in this Typer app")
+        return "\n".join(lines) + "\n"
+
+    # Now generate request models and route handlers
+    for cmd_data in commands_data:
+        callback = cmd_data["callback"]
+        reference = cmd_data["reference"]
+        metadata = cmd_data["metadata"]
+        model_name = cmd_data["model_name"]
+        hints = cmd_data["hints"]
+        is_secured = cmd_data["is_secured"]
+
+        # Generate request model
+        lines.append(f"\n\nclass {model_name}(BaseModel):")
+
+        sig = inspect.signature(callback)
+        model_fields = []
+        for name, parameter in sig.parameters.items():
+            if name in ("self", "cls"):
+                continue
+
+            annotation = hints.get(name, parameter.annotation)
+            type_code = _type_code(annotation, param_name=name)
+            actual_default = _extract_default_value(parameter.default)
+
+            if actual_default is inspect.Parameter.empty:
+                # Required parameter
+                if type_code.startswith("list["):
+                    model_fields.append(f"    {name}: {type_code} = Field(min_length=1)")
+                else:
+                    model_fields.append(f"    {name}: {type_code}")
+            else:
+                # Optional parameter with default
+                model_fields.append(f"    {name}: {type_code} = {_render_default(actual_default)}")
+
+        if model_fields:
+            lines.extend(model_fields)
+        else:
+            lines.append("    pass")
+
+        # Generate route handler
+        route_path = metadata["path"]
+        route_method = metadata["method"].lower()
+        route_path_clean = route_path.removeprefix(prefix)
+        access_level = metadata.get("access_level", "public")
+        risk_level = metadata.get("risk_level", "medium")
+        requires_audit = metadata.get("requires_audit", False)
+
+        route_handler_lines = [
+            f'\n\n@router.{route_method}("{route_path_clean}")',
+            f"async def api_{callback.__name__}(",
+        ]
+
+        if is_secured:
+            route_handler_lines.extend(
+                [
+                    "    request: Request,",
+                    f"    payload: {model_name},",
+                    '    access_checker: "AccessChecker" = Depends(get_access_checker),',
+                    ") -> Any:",
+                ]
+            )
+        else:
+            route_handler_lines.extend(
+                [
+                    f"    payload: {model_name},",
+                    ") -> Any:",
+                ]
+            )
+
+        route_handler_lines.append(f'    """{inspect.getdoc(callback) or "Execute API command."}"""')
+
+        if is_secured:
+            endpoint_name = metadata.get("path", "").lstrip("/").replace("/", ".")
+            route_handler_lines.extend(
+                [
+                    "    try:",
+                    "        access_checker.verify(",
+                    f'            endpoint="{endpoint_name}",',
+                    f'            required_level="{access_level}",',
+                    '            user_id=request.headers.get("X-User-ID"),',
+                    '            is_admin=admin_request_is_authorized(request.headers.get("Authorization"), os.environ.get("FLEET_ADMIN_TOKEN")),',
+                    "        )",
+                    "    except AccessDenied as e:",
+                    "        raise HTTPException(status_code=403, detail=str(e))",
+                ]
+            )
+            if requires_audit:
+                route_handler_lines.append(
+                    f'    logger.info("api_call", endpoint="{endpoint_name}", user_id=request.headers.get("X-User-ID"), risk_level="{risk_level}")'
+                )
+            route_handler_lines.extend(
+                [
+                    "    try:",
+                    f"        result = await run_in_threadpool({reference}, **payload.model_dump())",
+                    "    except typer.Exit as exc:",
+                    "        if exc.exit_code == 0:",
+                    "            result = None",
+                    "        elif exc.exit_code == 2:",
+                    "            raise HTTPException(",
+                    "                status_code=400,",
+                    '                detail={"error": "invalid_request", "message": "Invalid command usage", "details": {"exit_code": 2}},',
+                    "            )",
+                    "        elif exc.exit_code == 3:",
+                    "            raise HTTPException(",
+                    "                status_code=409,",
+                    "                detail={",
+                    '                    "error": "conflict",',
+                    '                    "message": "Resource conflict or prerequisite failure",',
+                    '                    "details": {"exit_code": 3},',
+                    "                },",
+                    "            )",
+                    "        else:",
+                    "            raise HTTPException(",
+                    "                status_code=500,",
+                    "                detail={",
+                    '                    "error": "command_failed",',
+                    '                    "message": "Command terminated with non-zero status",',
+                    '                    "details": {"exit_code": exc.exit_code},',
+                    "                },",
+                    "            )",
+                    "    except typer.Abort:",
+                    "        raise HTTPException(",
+                    "            status_code=409,",
+                    '            detail={"error": "command_aborted", "message": "Command aborted"},',
+                    "        )",
+                    "    except (click.UsageError, typer.BadParameter):",
+                    "        raise HTTPException(",
+                    "            status_code=400,",
+                    '            detail={"error": "invalid_request", "message": "Invalid request parameters"},',
+                    "        )",
+                    "    except HTTPException:",
+                    "        raise",
+                    "    except Exception as e:",
+                    f'        logger.error("api_error", endpoint="{endpoint_name}", exc_info=True)',
+                    "        raise HTTPException(status_code=500, detail='Operation failed')",
+                    "    return {'success': True, 'data': result}",
+                ]
+            )
+        else:
+            route_handler_lines.extend(
+                [
+                    "    try:",
+                    f"        result = await run_in_threadpool({reference}, **payload.model_dump())",
+                    "    except typer.Exit as exc:",
+                    "        if exc.exit_code == 0:",
+                    "            result = None",
+                    "        elif exc.exit_code == 2:",
+                    "            raise HTTPException(",
+                    "                status_code=400,",
+                    '                detail={"error": "invalid_request", "message": "Invalid command usage", "details": {"exit_code": 2}},',
+                    "            )",
+                    "        elif exc.exit_code == 3:",
+                    "            raise HTTPException(",
+                    "                status_code=409,",
+                    "                detail={",
+                    '                    "error": "conflict",',
+                    '                    "message": "Resource conflict or prerequisite failure",',
+                    '                    "details": {"exit_code": 3},',
+                    "                },",
+                    "            )",
+                    "        else:",
+                    "            raise HTTPException(",
+                    "                status_code=500,",
+                    "                detail={",
+                    '                    "error": "command_failed",',
+                    '                    "message": "Command terminated with non-zero status",',
+                    '                    "details": {"exit_code": exc.exit_code},',
+                    "                },",
+                    "            )",
+                    "    except typer.Abort:",
+                    "        raise HTTPException(",
+                    "            status_code=409,",
+                    '            detail={"error": "command_aborted", "message": "Command aborted"},',
+                    "        )",
+                    "    except (click.UsageError, typer.BadParameter):",
+                    "        raise HTTPException(",
+                    "            status_code=400,",
+                    '            detail={"error": "invalid_request", "message": "Invalid request parameters"},',
+                    "        )",
+                    "    if result is None:",
+                    '        return {"status": "ok"}',
+                    "    return result",
+                ]
+            )
+
+        lines.extend(route_handler_lines)
+
+    return "\n".join(lines) + "\n"
+
+
+def load_typer_app(app_path: str, repo: str | Path = ".") -> typer.Typer:
+    """Import a `module:attr` Typer app, instantiating it when attr is a class.
+
+    The first existing candidate of `<repo>/src`, `<repo>`, `<repo>/..` is temporarily added to sys.path.
+
+    Raises:
+        AppLoadError: the path is malformed or the module or attribute cannot be imported.
+    """
+    repo_path = Path(repo)
+    added_path: str | None = None
+    for candidate in [repo_path / "src", repo_path, repo_path.parent]:
+        candidate_str = str(candidate)
+        if candidate.exists() and candidate_str not in sys.path:
+            sys.path.insert(0, candidate_str)
+            added_path = candidate_str
+            break
+
+    try:
+        module_path, class_name = app_path.split(":")
+        module = __import__(module_path, fromlist=[class_name])
+        loaded = getattr(module, class_name)
+        if isinstance(loaded, type):
+            loaded = loaded()
+    except (ValueError, ImportError, AttributeError) as e:
+        raise AppLoadError(f"Failed to load {app_path}: {e}") from e
+    finally:
+        if added_path is not None:
+            sys.path.remove(added_path)
+    return loaded
+
+
+def generate_routes_file(
+    app_path: str,
+    output: Path,
+    prefix: str = "/api/v1",
+    repo: str | Path = ".",
+) -> Path:
+    """Load the Typer app, generate its FastAPI router, and write it to `output`.
+
+    Returns:
+        The path written.
+    """
+    typer_app = load_typer_app(app_path, repo=repo)
+    routes_code = generate_fastapi_from_typer(typer_app, prefix=prefix)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(routes_code, encoding="utf-8")
+    return output
+
+
+@app.command()
+def generate(
+    app_path: str = typer.Option(..., "--app", help='Import path to Typer app (e.g., "src.cli:MyCLI")'),
+    output: Path = typer.Option(..., "--output", help="Output file path (e.g., src/api_routes.py)"),
+    prefix: str = typer.Option(  # typer-explicit: allow-optional: the documented default prefix; callers rely on it
+        "/api/v1", "--prefix", help="FastAPI router prefix (default: /api/v1)"
+    ),
+    repo: str = typer.Option(  # typer-explicit: allow-optional: the documented default root; callers rely on it
+        ".", "--repo", help="Repository root for imports (default: current directory)"
+    ),
+) -> None:
+    """Generate FastAPI routes from a Typer CLI app's @expose_api commands."""
+    try:
+        written = generate_routes_file(app_path, output, prefix=prefix, repo=repo)
+    except AppLoadError as e:
+        typer.echo(f"❌ {e}")
+        raise typer.Exit(1) from e
+    typer.echo(f"✅ Generated FastAPI routes at {written}")
+
+
+if __name__ == "__main__":
+    app()
+
+
+__all__ = [
+    "AppLoadError",
+    "UnsupportedAnnotationError",
+    "generate_fastapi_from_typer",
+    "generate_routes_file",
+    "load_typer_app",
+]

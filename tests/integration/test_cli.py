@@ -18,7 +18,7 @@ FIXTURE_CONFIG = REPO_ROOT / "tests" / "fixtures" / "indicators.toml"
 
 def test_analyze_writes_a_versioned_snapshot(tmp_repo: Path, cli_runner: CliRunner, tmp_path: Path) -> None:
     out = tmp_path / "graph.json"
-    result = cli_runner.invoke(app, ["analyze", str(tmp_repo), "--out", str(out)])
+    result = cli_runner.invoke(app, ["analyze", "--repo", str(tmp_repo), "--out", str(out)])
 
     assert result.exit_code == 0, result.output
     payload = json.loads(out.read_text(encoding="utf-8"))
@@ -29,12 +29,13 @@ def test_analyze_writes_a_versioned_snapshot(tmp_repo: Path, cli_runner: CliRunn
 def test_indicators_use_the_repo_producer(tmp_repo: Path, cli_runner: CliRunner, tmp_path: Path) -> None:
     graph = tmp_path / "graph.json"
     results = tmp_path / "indicators.json"
-    assert cli_runner.invoke(app, ["analyze", str(tmp_repo), "--out", str(graph)]).exit_code == 0
+    assert cli_runner.invoke(app, ["analyze", "--repo", str(tmp_repo), "--out", str(graph)]).exit_code == 0
 
     invoked = cli_runner.invoke(
         app,
         [
             "evaluate-indicators",
+            "--snapshot",
             str(graph),
             "--config",
             str(FIXTURE_CONFIG),
@@ -55,8 +56,8 @@ def test_indicators_use_the_repo_producer(tmp_repo: Path, cli_runner: CliRunner,
 
 def test_summary_prints_counts(tmp_repo: Path, cli_runner: CliRunner, tmp_path: Path) -> None:
     graph = tmp_path / "graph.json"
-    assert cli_runner.invoke(app, ["analyze", str(tmp_repo), "--out", str(graph), "--json"]).exit_code == 0
-    result = cli_runner.invoke(app, ["summary", str(graph), "--json"])
+    assert cli_runner.invoke(app, ["analyze", "--repo", str(tmp_repo), "--out", str(graph), "--json"]).exit_code == 0
+    result = cli_runner.invoke(app, ["summary", "--snapshot", str(graph), "--json"])
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["nodes"] > 0

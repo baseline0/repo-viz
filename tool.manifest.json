@@ -1,0 +1,23 @@
+{
+  "name": "repo-viz",
+  "version": "0.1.0",
+  "description": "Interactive membrane visualizer with an authenticated API for agent-driven metric collection",
+  "capabilities": [
+    "analyze",
+    "collect",
+    "evaluate-indicators",
+    "serve"
+  ],
+  "entry_points": {
+    "cli": "repo-viz",
+    "module": "repo_viz.cli",
+    "server": "uv run python -m repo_viz.cli api"
+  },
+  "inputs": {},
+  "outputs": {},
+  "provenance": "static analysis of a local checkout and configured indicator producers",
+  "probes": {
+    "liveness": "/healthz",
+    "readiness": "/readyz"
+  }
+}

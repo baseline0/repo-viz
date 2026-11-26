@@ -6,7 +6,13 @@ requires-python = ">=3.13"
 dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
+    "fastapi>=0.165.0",
+    "uvicorn>=0.54.0",
 ]
+
+[project.scripts]
+repo-viz = "repo_viz.cli:app"
+repo-viz-autogen = "repo_viz.autogen.cli:app"
 
 [dependency-groups]
 dev = [
@@ -16,6 +22,7 @@ dev = [
     "ruff>=0.3.0",
     "pyright>=1.1.0",
     "pre-commit>=4.6.2",
+    "httpx>=0.28.1",
 ]
 
 [build-system]

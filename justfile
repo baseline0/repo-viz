@@ -32,6 +32,8 @@ set shell := ["bash", "-c"]
 import 'just/fleet-clean.just'
 import 'just/fleet-commit.just'
 import 'just/repo-push.just'
+# Generated from the Typer app; regenerate with `just generate-endpoints`.
+import 'just/generated.just'
 
 # Optional: Import shared utilities (pre-commit, commit, CI checks)
 # import? 'just/shared.just'
@@ -193,15 +195,7 @@ inventory-deps:
 # ============================================================================
 # Add custom recipes below. Organize with comments and groups.
 
-# Regenerate the versioned graph artifact for a checkout (derived; never hand-edit).
-[group("dev")]
-analyze REPO OUT="graph.json" DAYS="30":
-    uv run python -m repo_viz.cli analyze "{{REPO}}" --out "{{OUT}}" --days "{{DAYS}}"
-
-[group("dev")]
-summary SNAPSHOT:
-    uv run python -m repo_viz.cli summary "{{SNAPSHOT}}"
-
+# CLI entrypoints are generated from src/repo_viz/cli.py (rv-* recipes below).
 # Frontend: npm install is guarded, matching the fleet's periodic-table-inspector recipe.
 [group("dev")]
 frontend-install:
@@ -215,18 +209,22 @@ frontend-check: frontend-install
 frontend-build: frontend-install
     cd frontend && npm run build
 
-# Validate that the tracked indicator configuration parses and resolves.
+# Interface generation: Typer app is the source of truth.
 [group("dev")]
-check-indicators:
-    uv run python -m repo_viz.cli check-indicators --config config/indicators.toml
+generate-endpoints:
+    uv run python -m repo_viz.autogen.cli generate-endpoints
 
 [group("dev")]
-indicators SNAPSHOT OUT="indicators.json" TRIGGER="render" REPO="":
-    uv run python -m repo_viz.cli evaluate-indicators "{{SNAPSHOT}}" --out "{{OUT}}" --trigger "{{TRIGGER}}" {{ if REPO != "" { "--repo \"" + REPO + "\"" } else { "" } }}
+check-endpoints:
+    uv run python -m repo_viz.autogen.cli check-endpoints
 
 [group("dev")]
-serve GRAPH PORT="8080" *ARGS: frontend-build
-    uv run python -m repo_viz.cli serve "{{GRAPH}}" --port "{{PORT}}" {{ARGS}}
+gen-api:
+    uv run python -m repo_viz.autogen.cli gen-api
+
+[group("dev")]
+gen-check:
+    uv run python -m repo_viz.autogen.cli check-api
 
 # Example: If this repo manages jobs
 # [group("fleet")]

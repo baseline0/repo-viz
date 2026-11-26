@@ -13,15 +13,17 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import typer
 
-from repo_viz.constants import REPO_ROOT
+from repo_viz.autogen.api_expose import expose
 from repo_viz.discovery import list_python_files
 from repo_viz.indicators.producers import collect_values
 from repo_viz.indicators.registry import evaluate, validate_config, write_results
 from repo_viz.indicators.spec import EvaluationContext, load_config
 from repo_viz.model import GraphSnapshot
+from repo_viz.operations import collect_metrics
 from repo_viz.output import JsonOption, command_output
 from repo_viz.snapshot import build_snapshot, snapshot_counts, write_snapshot
 from repo_viz.web import serve as serve_viewer
@@ -31,12 +33,13 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 
 @app.command()
 def analyze(
-    repo: Path = typer.Argument(..., help="Repository checkout to analyze"),
-    out: Path = typer.Option(Path("graph.json"), "--out", help="Snapshot output path"),
+    repo: Path = typer.Option(..., "--repo", help="Repository checkout to analyze"),
+    out: Path = typer.Option("graph.json", "--out", help="Snapshot output path"),
     days: int = typer.Option(30, min=0, help="Window for git churn"),
     json_output: bool = JsonOption,
 ) -> None:
     """Build a versioned graph snapshot from tracked Python files."""
+    out = Path(out)
     with command_output(json_output) as out_stream:
         snapshot = build_snapshot(repo.resolve(), days=days)
         write_snapshot(snapshot, out)
@@ -49,10 +52,11 @@ def analyze(
 
 @app.command()
 def summary(
-    snapshot_path: Path = typer.Argument(..., help="Snapshot JSON to summarize"),
+    snapshot_path: Path = typer.Option(..., "--snapshot", help="Snapshot JSON to summarize"),
     json_output: bool = JsonOption,
 ) -> None:
     """Print node/edge/port counts from a snapshot."""
+    snapshot_path = Path(snapshot_path)
     with command_output(json_output) as out_stream:
         counts = snapshot_counts(json.loads(snapshot_path.read_text(encoding="utf-8")))
         out_stream.echo(f"repo-viz/graph@1: {counts['nodes']} nodes, {counts['edges']} edges, {counts['ports']} ports")
@@ -61,24 +65,27 @@ def summary(
 
 @app.command()
 def evaluate_indicators(
-    snapshot_path: Path = typer.Argument(..., help="Snapshot JSON to evaluate"),
-    config: Path = typer.Option(REPO_ROOT / "config" / "indicators.toml", "--config"),
-    out: Path = typer.Option(Path("indicators.json"), "--out"),
+    snapshot_path: Path = typer.Option(..., "--snapshot", help="Snapshot JSON to evaluate"),
+    config: Path = typer.Option("config/indicators.toml", "--config"),
+    out: Path = typer.Option("indicators.json", "--out"),
     trigger: str = typer.Option("render", "--trigger", help="render or change"),
-    changed: list[Path] = typer.Option([], "--changed", help="Paths touched by a change"),
+    changed: str = typer.Option("", "--changed", help="Comma-separated changed paths"),
     repo: Path | None = typer.Option(None, "--repo", help="Checkout supplying producer values"),
     json_output: bool = JsonOption,
 ) -> None:
     """Run configured indicator evaluators over a snapshot."""
     if trigger not in {"render", "change"}:
         raise typer.BadParameter("trigger must be render or change")
+    config = Path(config)
+    out = Path(out)
+    repo = Path(repo) if repo is not None else None
     with command_output(json_output) as out_stream:
         graph = GraphSnapshot.from_dict(json.loads(snapshot_path.read_text(encoding="utf-8")))
         values = collect_values(repo.resolve(), list_python_files(repo.resolve())) if repo else {}
         context = EvaluationContext(
             graph=graph,
             trigger=trigger,
-            changed_paths=tuple(str(item) for item in changed),
+            changed_paths=tuple(item for item in changed.split(",") if item),
             values=values,
         )
         results = evaluate(load_config(config), context)
@@ -89,10 +96,11 @@ def evaluate_indicators(
 
 @app.command()
 def check_indicators(
-    config: Path = typer.Option(REPO_ROOT / "config" / "indicators.toml", "--config"),
+    config: Path = typer.Option("config/indicators.toml", "--config"),
     json_output: bool = JsonOption,
 ) -> None:
     """Validate indicator config and resolve every compute target."""
+    config = Path(config)
     with command_output(json_output) as out_stream:
         report = validate_config(load_config(config))
         out_stream.echo(
@@ -106,19 +114,62 @@ def check_indicators(
 
 @app.command()
 def serve(
-    graph: Path = typer.Argument(..., help="Snapshot JSON to display"),
+    graph: Path = typer.Option(..., "--graph", help="Snapshot JSON to display"),
     host: str = typer.Option("127.0.0.1", help="Bind address"),
     port: int = typer.Option(8080, min=1, max=65535, help="Bind port"),
-    config: Path = typer.Option(REPO_ROOT / "config" / "indicators.toml", "--config"),
+    config: Path = typer.Option("config/indicators.toml", "--config"),
     indicators: Path | None = typer.Option(None, "--indicators", help="Indicator results JSON"),
     json_output: bool = JsonOption,
 ) -> None:
     """Serve the built viewer, graph snapshot and indicator configuration."""
+    graph = Path(graph)
+    config = Path(config)
+    indicators = Path(indicators) if indicators is not None else None
     with command_output(json_output) as out_stream:
         config_object = load_config(config) if config.is_file() else None
         out_stream.echo(f"serving {graph} on {host}:{port}")
         out_stream.data = {"graph": str(graph), "host": host, "port": port}
     serve_viewer(graph, host=host, port=port, config=config_object, indicators=indicators)
+
+
+@app.command()
+@expose(path="/api/v1/collect", method="POST")
+def collect(
+    repo: Path = typer.Option(..., "--repo", help="Checkout to collect from"),
+    out_dir: str = typer.Option("data", "--out-dir", help="Artifact directory"),
+    trigger: str = typer.Option("render", "--trigger", help="render or change"),
+    days: int = typer.Option(30, "--days", min=0),
+    json_output: bool = typer.Option(False, "--json"),
+) -> dict[str, Any]:
+    """Collect a snapshot, producer values and indicator results for an agent."""
+    repo = Path(repo)
+    resolved_out_dir = Path(out_dir)
+    with command_output(json_output) as out_stream:
+        report = collect_metrics(
+            repo.resolve(),
+            resolved_out_dir,
+            Path("config/indicators.toml"),
+            trigger=trigger,
+            days=days,
+        )
+        out_stream.echo(f"collected {report['results']} results -> {resolved_out_dir}")
+        out_stream.data = report
+    return report
+
+
+@app.command()
+def api(
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8080, "--port", min=1, max=65535),
+    json_output: bool = JsonOption,
+) -> None:
+    """Serve the authenticated FastAPI service."""
+    from repo_viz.server import serve_api
+
+    with command_output(json_output) as out_stream:
+        out_stream.echo(f"serving API on {host}:{port}")
+        out_stream.data = {"host": host, "port": port}
+    serve_api(host=host, port=port)
 
 
 if __name__ == "__main__":
