@@ -283,12 +283,13 @@ def assess_fleet(
     root: Path = typer.Option(..., "--root", help="Root directory containing fleet-* and tool-* repositories"),
     patterns: str = typer.Option("fleet-*,tool-*", "--patterns", help="Comma-separated glob patterns to match"),
     out: str = typer.Option("", "--out", help="Optional output JSON path for the fleet assessment"),
+    csv: str = typer.Option("", "--csv", help="Optional output CSV path for the candidate ledger"),
     days: int = typer.Option(30, "--days", min=0, help="Window for git churn"),
     config: str = typer.Option("", "--config", help="Optional indicator configuration path"),
     json_output: bool = JsonOption,
 ) -> dict[str, Any]:
     """Walk all fleet and tool repositories, compiling a unified antipattern and refactoring ledger."""
-    from repo_viz.assessment import walk_fleet, write_assessment
+    from repo_viz.assessment import walk_fleet, write_assessment, write_csv_ledger
 
     pattern_list = tuple(p.strip() for p in patterns.split(",") if p.strip())
     with command_output(json_output) as out_stream:
@@ -301,9 +302,13 @@ def assess_fleet(
         payload = fleet_assessment.to_dict()
         if out:
             write_assessment(payload, Path(out))
+        if csv:
+            combined = fleet_assessment.top_tier_a_candidates + fleet_assessment.top_tier_b_candidates
+            write_csv_ledger(combined, Path(csv))
         out_stream.echo(
             f"Fleet assessment complete: {fleet_assessment.total_repos} repos, "
-            f"{fleet_assessment.total_candidates} total refactoring candidates identified"
+            f"{fleet_assessment.total_candidates} total refactoring candidates identified "
+            f"({len(fleet_assessment.top_tier_a_candidates)} Tier A, {len(fleet_assessment.top_tier_b_candidates)} Tier B)"
         )
         out_stream.data = payload
     return payload
