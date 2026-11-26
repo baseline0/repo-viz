@@ -66,6 +66,12 @@ check:
 [group("dev")]
 ci: check test
 
+# Build a versioned graph snapshot from tracked Python files (convenience alias for rv-analyze).
+[group("dev")]
+analyze repo out="graph.json" days="30":
+    just rv-analyze "{{ repo }}" "{{ out }}" "{{ days }}"
+
+
 # ============================================================================
 # [testing] Test execution: unit, integration, full suite
 # ============================================================================
