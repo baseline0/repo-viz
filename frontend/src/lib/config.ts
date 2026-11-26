@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG: IndicatorConfig = {
     glyph,
     position,
     colors: { ...COLORS },
-    enabled: position < 5 || (position >= 7 && position <= 9),
+    enabled: position <= 5 || (position >= 7 && position <= 9) || position >= 11,
     triggers: ['render', 'change'],
   })),
 };

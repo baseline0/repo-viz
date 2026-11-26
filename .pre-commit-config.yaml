@@ -154,6 +154,7 @@ repos:
     entry: bash -c 'just check-endpoints && just gen-check'
     language: system
     pass_filenames: false
+    always_run: true
     files: (src/repo_viz/cli\.py|just/generated\.just|api_routes_autogen\.py)$
     stages:
     - pre-commit

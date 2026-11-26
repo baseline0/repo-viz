@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from repo_viz.indicators.registry import by_node, evaluate, resolve, results_to_dict
+from repo_viz.indicators.registry import by_node, evaluate, resolve, results_to_dict, validate_results
 from repo_viz.indicators.spec import Arc, EvaluationContext, Indicator, IndicatorConfig, State
 from repo_viz.model import GraphSnapshot, Metrics, Node, NodeKind
 
@@ -44,6 +44,22 @@ def test_evaluate_runs_only_enabled_indicators() -> None:
     assert results[0].state is State.VIOLATION
     assert by_node(results)["a.py"][0] is results[0]
     assert results_to_dict(results)["results"][0]["state"] == "violation"
+
+
+def test_validate_results_checks_version_and_rows() -> None:
+    row = {
+        "indicator_id": "security",
+        "node_id": "a.py",
+        "trigger": "render",
+        "state": "partial",
+        "value": 1,
+        "evidence": "marker",
+        "computed_at": "now",
+    }
+    assert validate_results({"version": 1, "results": [row]})["ok"] is True
+    report = validate_results({"version": 2, "results": [{"indicator_id": "x"}]})
+    assert report["ok"] is False
+    assert len(report["problems"]) >= 2
 
 
 def test_snapshot_round_trip() -> None:

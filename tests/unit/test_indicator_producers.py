@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from repo_viz.indicators.builtin import hotspot, satd
-from repo_viz.indicators.producers import satd_from_source
+from repo_viz.indicators.producers import coverage_from_json, satd_from_source
 from repo_viz.indicators.spec import EvaluationContext, State
 from repo_viz.model import GraphSnapshot, Metrics, Node, NodeKind
+
+
+def test_coverage_from_json_reads_percentages(tmp_path: Path) -> None:
+    report = tmp_path / "coverage.json"
+    report.write_text(
+        '{"files": {"a.py": {"summary": {"percent_covered": 85.5}}}}',
+        encoding="utf-8",
+    )
+    assert coverage_from_json(report) == {"a.py": 0.855}
 
 
 def test_satd_counts_comments_but_not_strings() -> None:

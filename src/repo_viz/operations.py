@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from repo_viz.discovery import list_python_files
-from repo_viz.indicators.producers import collect_values
+from repo_viz.indicators.producers import collect_values, coverage_from_json
 from repo_viz.indicators.registry import evaluate, write_results
 from repo_viz.indicators.spec import EvaluationContext, load_config
 from repo_viz.snapshot import build_snapshot, write_snapshot
@@ -24,6 +24,7 @@ def collect_metrics(
     *,
     trigger: str = "render",
     days: int = 30,
+    coverage_path: str = "",
 ) -> dict[str, Any]:
     """Run the full static collection pipeline and return artifact locations."""
     if trigger not in {"render", "change"}:
@@ -34,7 +35,8 @@ def collect_metrics(
     snapshot = build_snapshot(repo, days=days)
     write_snapshot(snapshot, graph_path)
     values = collect_values(repo, list_python_files(repo), days=days)
-    context = EvaluationContext(graph=snapshot, trigger=trigger, values=values)
+    coverage = coverage_from_json(Path(coverage_path)) if coverage_path else {}
+    context = EvaluationContext(graph=snapshot, trigger=trigger, values=values, coverage=coverage)
     results = evaluate(load_config(config), context)
     write_results(results, results_path)
     return {

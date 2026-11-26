@@ -68,7 +68,7 @@ glyph = "gauge"
 position = 5
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:coverage"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 30
 
@@ -148,10 +148,11 @@ glyph = "gate"
 position = 11
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:arch_drift"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
-thresholds = { partial = 5, violation = 12 }
+# repo-viz membrane cross-boundary edges: p50=28, p75=125, max=139.
+thresholds = { partial = 28, violation = 125 }
 evidence = "2610.01611 survey: structural design metrics dominate degradation measurement (92.3%)"
 
 [[indicators]]
@@ -161,10 +162,11 @@ glyph = "bolt"
 position = 12
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:cognitive_friction"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
-thresholds = { partial = 8, violation = 20 }
+# Cognitive complexity x churn: p75=7, p90=17 on the current snapshot.
+thresholds = { partial = 7, violation = 17 }
 evidence = "2607.01850 case study: code health and hotspots guide maintenance prioritisation"
 
 [[indicators]]
@@ -174,8 +176,9 @@ glyph = "clock"
 position = 13
 colors = { verified = "#2dd4a7", na = "#64748b", partial = "#f59e0b", violation = "#f43f5e" }
 compute = "repo_viz.indicators.builtin:cochange"
-enabled = false
+enabled = true
 triggers = ["render", "change"]
 timeout_seconds = 5
-thresholds = { partial = 2, violation = 5 }
+# Co-change partners per file: p90=24, max=58 in the last 30 commits.
+thresholds = { partial = 20, violation = 40 }
 evidence = "2607.01850 case study: change coupling aligns with practitioner-perceived friction"

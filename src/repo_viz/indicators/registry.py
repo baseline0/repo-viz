@@ -14,7 +14,7 @@ import json
 import os
 import signal
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -104,6 +104,36 @@ def evaluate(config: IndicatorConfig, context: EvaluationContext) -> tuple[Indic
                 )
             )
     return tuple(results)
+
+
+def validate_results(payload: Mapping[str, Any]) -> dict[str, Any]:
+    """Check an indicator-results artifact without a JSON-schema dependency."""
+    problems: list[str] = []
+    if payload.get("version") != 1:
+        problems.append(f"unsupported results version: {payload.get('version')}")
+    rows = payload.get("results")
+    if not isinstance(rows, list):
+        problems.append("results must be an array")
+        rows = []
+    required = {"indicator_id", "node_id", "trigger", "state", "value", "evidence", "computed_at"}
+    states = {state.value for state in State}
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            problems.append(f"results[{index}] is not an object")
+            continue
+        missing = required - set(row)
+        if missing:
+            problems.append(f"results[{index}] missing {sorted(missing)}")
+        if row.get("state") not in states:
+            problems.append(f"results[{index}] has invalid state {row.get('state')!r}")
+        if row.get("trigger") not in {"render", "change"}:
+            problems.append(f"results[{index}] has invalid trigger {row.get('trigger')!r}")
+    return {
+        "version": payload.get("version"),
+        "results": len(rows),
+        "problems": problems,
+        "ok": not problems,
+    }
 
 
 def results_to_dict(results: tuple[IndicatorResult, ...]) -> dict[str, Any]:

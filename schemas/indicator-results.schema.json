@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet.local/repo-viz/indicator-results.schema.json",
+  "title": "repo-viz indicator results",
+  "type": "object",
+  "required": ["version", "results"],
+  "properties": {
+    "version": { "const": 1 },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["indicator_id", "node_id", "trigger", "state", "value", "evidence", "computed_at"],
+        "properties": {
+          "indicator_id": { "type": "string", "minLength": 1 },
+          "node_id": { "type": "string", "minLength": 1 },
+          "trigger": { "enum": ["render", "change"] },
+          "state": { "enum": ["verified", "na", "partial", "violation"] },
+          "value": { "type": ["string", "number", "null"] },
+          "evidence": { "type": "string" },
+          "computed_at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

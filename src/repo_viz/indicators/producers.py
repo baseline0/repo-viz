@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import io
+import json
 import re
 import subprocess
 import tokenize
@@ -26,6 +27,17 @@ def satd_from_source(source: str) -> int:
         return sum(len(_MARKER.findall(token.string)) for token in tokens if token.type == tokenize.COMMENT)
     except tokenize.TokenError:
         return 0
+
+
+def coverage_from_json(path: Path) -> dict[str, float]:
+    """Read per-file coverage ratios from a pytest-cov JSON report."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    result: dict[str, float] = {}
+    for name, details in payload.get("files", {}).items():
+        percent = details.get("summary", {}).get("percent_covered")
+        if percent is not None:
+            result[name] = float(percent) / 100.0
+    return result
 
 
 def cochange_counts(commits: Iterable[Iterable[str]]) -> dict[str, float]:

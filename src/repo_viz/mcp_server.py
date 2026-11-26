@@ -107,7 +107,12 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
 
         @server.tool(name="collect", annotations=WRITES_FILES)
         @_envelope
-        def collect(repo: str, out_dir: str = "", trigger: str = "render") -> dict[str, Any]:
+        def collect(
+            repo: str,
+            out_dir: str = "",
+            trigger: str = "render",
+            coverage: str = "",
+        ) -> dict[str, Any]:
             """Write a snapshot and indicator results for a checkout."""
             return collect_metrics(
                 Path(repo),
@@ -115,6 +120,7 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
                 CONFIG_PATH,
                 trigger=trigger,
                 days=30,
+                coverage_path=coverage,
             )
 
     return server

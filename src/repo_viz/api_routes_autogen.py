@@ -22,6 +22,7 @@ class CollectRequest(BaseModel):
     out_dir: str = "data"
     trigger: str = "render"
     days: int = 30
+    coverage: str = ""
     json_output: bool = False
 
 

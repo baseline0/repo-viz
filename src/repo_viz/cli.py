@@ -19,8 +19,8 @@ import typer
 
 from repo_viz.autogen.api_expose import expose
 from repo_viz.discovery import list_python_files
-from repo_viz.indicators.producers import collect_values
-from repo_viz.indicators.registry import evaluate, validate_config, write_results
+from repo_viz.indicators.producers import collect_values, coverage_from_json
+from repo_viz.indicators.registry import evaluate, validate_config, validate_results, write_results
 from repo_viz.indicators.spec import EvaluationContext, load_config
 from repo_viz.model import GraphSnapshot
 from repo_viz.operations import collect_metrics
@@ -71,6 +71,7 @@ def evaluate_indicators(
     trigger: str = typer.Option("render", "--trigger", help="render or change"),
     changed: str = typer.Option("", "--changed", help="Comma-separated changed paths"),
     repo: Path | None = typer.Option(None, "--repo", help="Checkout supplying producer values"),
+    coverage: str = typer.Option("", "--coverage", help="pytest-cov JSON report"),
     json_output: bool = JsonOption,
 ) -> None:
     """Run configured indicator evaluators over a snapshot."""
@@ -87,6 +88,7 @@ def evaluate_indicators(
             trigger=trigger,
             changed_paths=tuple(item for item in changed.split(",") if item),
             values=values,
+            coverage=coverage_from_json(Path(coverage)) if coverage else {},
         )
         results = evaluate(load_config(config), context)
         write_results(results, out)
@@ -110,6 +112,19 @@ def check_indicators(
         failed = not report["ok"]
     if failed:
         raise typer.Exit(1)
+
+
+@app.command()
+def check_results(
+    results: str = typer.Option("indicators.json", "--results", help="Indicator results JSON"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Validate an indicator-results artifact."""
+    with command_output(json_output) as out_stream:
+        report = validate_results(json.loads(Path(results).read_text(encoding="utf-8")))
+        out_stream.echo(f"{report['results']} results, {len(report['problems'])} problems")
+        out_stream.data = report
+    return report
 
 
 @app.command()
@@ -139,6 +154,7 @@ def collect(
     out_dir: str = typer.Option("data", "--out-dir", help="Artifact directory"),
     trigger: str = typer.Option("render", "--trigger", help="render or change"),
     days: int = typer.Option(30, "--days", min=0),
+    coverage: str = typer.Option("", "--coverage", help="pytest-cov JSON report"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> dict[str, Any]:
     """Collect a snapshot, producer values and indicator results for an agent."""
@@ -151,6 +167,7 @@ def collect(
             Path("config/indicators.toml"),
             trigger=trigger,
             days=days,
+            coverage_path=coverage,
         )
         out_stream.echo(f"collected {report['results']} results -> {resolved_out_dir}")
         out_stream.data = report
