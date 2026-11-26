@@ -1,0 +1,27 @@
+tool: repo-viz
+mcp_server: repo-viz-mcp
+version: 0.1.0
+owner: mark
+capabilities:
+  - get_summary
+  - get_indicator_results
+  - get_indicator_config
+  - check_indicator_config
+  - audit_component
+  - analyze
+  - collect
+  - prepare_work_item
+boundaries:
+  read_only: true
+  network: none
+  # Write effects are gated by fleet-toolbox grants and per-call approval, not by a human-only command list.
+  human_approval_required_for: []
+evidence:
+  - tests/unit/test_mcp_server.py
+  - tests/unit/test_fleet_blueprint.py
+  - tests/integration/test_api.py
+eval_cases: eval/repo_viz_cases.yaml
+claims:
+  - MCP-01
+  - MCP-02
+  - MCP-03
