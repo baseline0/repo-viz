@@ -250,5 +250,64 @@ def prepare_work_item(
     return payload
 
 
+@app.command()
+def assess(
+    repo: Path = typer.Option(..., "--repo", help="Repository checkout to assess"),
+    out: str = typer.Option("", "--out", help="Optional output JSON path for the assessment report"),
+    days: int = typer.Option(30, "--days", min=0, help="Window for git churn"),
+    config: str = typer.Option("", "--config", help="Optional indicator configuration path"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Assess a repository, computing Lift, Squeeze, and ROI-ranked refactoring candidates."""
+    from repo_viz.assessment import assess_repo, write_assessment
+
+    with command_output(json_output) as out_stream:
+        assessment = assess_repo(
+            repo,
+            days=days,
+            config_path=Path(config) if config else None,
+        )
+        payload = assessment.to_dict()
+        if out:
+            write_assessment(payload, Path(out))
+        out_stream.echo(
+            f"Assessed {assessment.repo_name}: {assessment.degraded_nodes}/{assessment.total_nodes} degraded nodes, "
+            f"{len(assessment.candidates)} refactoring candidates, avg ROI {assessment.average_roi}"
+        )
+        out_stream.data = payload
+    return payload
+
+
+@app.command()
+def assess_fleet(
+    root: Path = typer.Option(..., "--root", help="Root directory containing fleet-* and tool-* repositories"),
+    patterns: str = typer.Option("fleet-*,tool-*", "--patterns", help="Comma-separated glob patterns to match"),
+    out: str = typer.Option("", "--out", help="Optional output JSON path for the fleet assessment"),
+    days: int = typer.Option(30, "--days", min=0, help="Window for git churn"),
+    config: str = typer.Option("", "--config", help="Optional indicator configuration path"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Walk all fleet and tool repositories, compiling a unified antipattern and refactoring ledger."""
+    from repo_viz.assessment import walk_fleet, write_assessment
+
+    pattern_list = tuple(p.strip() for p in patterns.split(",") if p.strip())
+    with command_output(json_output) as out_stream:
+        fleet_assessment = walk_fleet(
+            root,
+            patterns=pattern_list,
+            days=days,
+            config_path=Path(config) if config else None,
+        )
+        payload = fleet_assessment.to_dict()
+        if out:
+            write_assessment(payload, Path(out))
+        out_stream.echo(
+            f"Fleet assessment complete: {fleet_assessment.total_repos} repos, "
+            f"{fleet_assessment.total_candidates} total refactoring candidates identified"
+        )
+        out_stream.data = payload
+    return payload
+
+
 if __name__ == "__main__":
     app()
