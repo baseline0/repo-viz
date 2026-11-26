@@ -35,6 +35,11 @@ DATA_DIR = Path(os.environ.get("FLEET_DATA_DIR", str(REPO_ROOT / ".fleet")))
 CONFIG_PATH = REPO_ROOT / "config" / "indicators.toml"
 
 
+def _config_path() -> Path:
+    """A mission may supply thresholds tuned for its own target repository."""
+    return Path(os.environ.get("REPO_VIZ_INDICATOR_CONFIG", str(CONFIG_PATH)))
+
+
 def _envelope(view: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Return one fleet read-envelope with success data or a structured failure."""
 
@@ -101,13 +106,13 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
     @_envelope("get_indicator_config")
     def get_indicator_config() -> dict[str, Any]:
         """Return slot positions, palettes, thresholds and evidence references."""
-        return load_config(CONFIG_PATH).to_dict()
+        return load_config(_config_path()).to_dict()
 
     @server.tool(name="check_indicator_config", annotations=READ_ONLY)
     @_envelope("check_indicator_config")
     def check_indicator_config() -> dict[str, Any]:
         """Resolve every configured evaluator and report problems."""
-        return validate_config(load_config(CONFIG_PATH))
+        return validate_config(load_config(_config_path()))
 
     @server.tool(name="audit_component", annotations=READ_ONLY)
     @_envelope("audit_component")
@@ -144,7 +149,7 @@ def build_server(*, allow_write: bool = False) -> MCPServer:
             return collect_metrics(
                 Path(repo),
                 _artifact_path(out_dir, DATA_DIR),
-                CONFIG_PATH,
+                _config_path(),
                 trigger=trigger,
                 days=30,
                 coverage_path=coverage,

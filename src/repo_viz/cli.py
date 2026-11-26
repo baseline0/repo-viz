@@ -165,6 +165,7 @@ def collect(
     trigger: str = typer.Option("render", "--trigger", help="render or change"),
     days: int = typer.Option(30, "--days", min=0),
     coverage: str = typer.Option("", "--coverage", help="pytest-cov JSON report"),
+    config: str = typer.Option("", "--config", help="Indicator config for this target repo"),
     json_output: bool = typer.Option(False, "--json"),
 ) -> dict[str, Any]:
     """Collect a snapshot, producer values and indicator results for an agent."""
@@ -174,7 +175,7 @@ def collect(
         report = collect_metrics(
             repo.resolve(),
             resolved_out_dir,
-            Path("config/indicators.toml"),
+            Path(config) if config else Path(os.environ.get("REPO_VIZ_INDICATOR_CONFIG", "config/indicators.toml")),
             trigger=trigger,
             days=days,
             coverage_path=coverage,

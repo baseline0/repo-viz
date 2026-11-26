@@ -23,6 +23,7 @@ class CollectRequest(BaseModel):
     trigger: str = "render"
     days: int = 30
     coverage: str = ""
+    config: str = ""
     json_output: bool = False
 
 

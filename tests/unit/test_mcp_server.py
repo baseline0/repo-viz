@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
+import pytest
 import typer
 
+from repo_viz import mcp_server
 from repo_viz.mcp_server import app as mcp_app
 from repo_viz.mcp_server import build_server
 
@@ -55,6 +58,12 @@ def test_no_tool_name_or_docstring_contains_a_forbidden_term() -> None:
         description = (tool.description or "").lower()  # type: ignore[union-attr]
         assert name.lower() not in FORBIDDEN
         assert all(term not in description for term in FORBIDDEN)
+
+
+def test_mission_can_supply_its_own_indicator_config(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    custom = tmp_path / "mission-indicators.toml"
+    monkeypatch.setenv("REPO_VIZ_INDICATOR_CONFIG", str(custom))
+    assert mcp_server._config_path() == custom
 
 
 def test_envelope_returns_config_and_structured_failure(tmp_path: object) -> None:
