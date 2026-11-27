@@ -53,9 +53,9 @@ def status_for(tags: frozenset[str], complexity: int, has_symbols: bool) -> Stat
     else:
         hygiene = StatusState.NOT_APPLICABLE
 
-    if "god_class" in tags or "dead_code" in tags:
+    if "god_class" in tags or "dead_code" in tags or "global_state" in tags or "uninjected_dependency" in tags:
         sentinel = StatusState.VIOLATION
-    elif "duplicate" in tags:
+    elif "duplicate" in tags or "tight_coupling" in tags:
         sentinel = StatusState.PARTIAL
     elif has_symbols:
         sentinel = StatusState.VERIFIED

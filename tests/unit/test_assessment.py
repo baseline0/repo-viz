@@ -187,6 +187,21 @@ def test_detect_antipatterns_identifies_architectural_smells() -> None:
     assert Antipattern.SATD_DEBT in patterns
 
 
+def test_detect_antipatterns_identifies_di_and_global_state_coupling() -> None:
+    coupled_node = Node(
+        id="src/legacy.py::Manager",
+        label="Manager",
+        kind=NodeKind.SYMBOL,
+        parent="src/legacy.py",
+        tags=frozenset({"global_state", "uninjected_dependency", "tight_coupling"}),
+        metrics=Metrics(loc=80, complexity=5),
+    )
+    patterns = detect_antipatterns(coupled_node, [])
+    assert Antipattern.GLOBAL_STATE in patterns
+    assert Antipattern.UNINJECTED_DEPENDENCY in patterns
+    assert Antipattern.TIGHT_COUPLING in patterns
+
+
 def test_repo_assessment_serialization_and_ledger(tmp_path: Path) -> None:
     candidate = RefactoringCandidate(
         node_id="src/module.py",

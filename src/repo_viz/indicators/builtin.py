@@ -118,8 +118,14 @@ def hygiene(node: Node, _context: EvaluationContext) -> Evaluation:
 def sentinel(node: Node, _context: EvaluationContext) -> Evaluation:
     if "god_class" in node.tags or "dead_code" in node.tags:
         return Evaluation(State.VIOLATION, "smell", "structural antipattern detected")
+    if "global_state" in node.tags:
+        return Evaluation(State.VIOLATION, "global_state", "coupling to mutable global/module-level state")
+    if "uninjected_dependency" in node.tags:
+        return Evaluation(State.VIOLATION, "uninjected_dependency", "tight coupling / lacks injectable dependencies")
     if "duplicate" in node.tags:
         return Evaluation(State.PARTIAL, "duplicate", "duplicate structure detected")
+    if "tight_coupling" in node.tags:
+        return Evaluation(State.PARTIAL, "tight_coupling", "tight coupling detected")
     if node.kind.value == "symbol":
         return Evaluation(State.VERIFIED, None, "no structural smell")
     return Evaluation(State.NA, None, "no structural evidence")

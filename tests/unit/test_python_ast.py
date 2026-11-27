@@ -56,3 +56,49 @@ def health() -> str:
     function = next(node for node in parsed.nodes if node.id == "api.py::health")
     assert "ingress" in function.tags
     assert "untyped" not in function.tags
+
+
+def test_probe_detects_global_state_coupling() -> None:
+    source = """\
+_cache = {}
+
+def update_cache(k: str, v: str) -> None:
+    global _cache
+    _cache[k] = v
+"""
+    parsed = parse_source(source, module_id="cache.py")
+    fn = next(node for node in parsed.nodes if node.id == "cache.py::update_cache")
+    assert "global_state" in fn.tags
+    assert "tight_coupling" in fn.tags
+
+
+def test_probe_detects_uninjectable_class_dependency() -> None:
+    source = """\
+class OrderProcessor:
+    def __init__(self):
+        pass
+
+    def process(self, order_id: str):
+        repo = OrderRepository()
+        gateway = PaymentGateway()
+        return repo.save(order_id)
+"""
+    parsed = parse_source(source, module_id="order.py")
+    cls_node = next(node for node in parsed.nodes if node.id == "order.py::OrderProcessor")
+    assert "uninjected_dependency" in cls_node.tags
+    assert "tight_coupling" in cls_node.tags
+
+
+def test_probe_permits_injected_dependencies() -> None:
+    source = """\
+class OrderProcessor:
+    def __init__(self, repo: OrderRepository, gateway: PaymentGateway):
+        self.repo = repo
+        self.gateway = gateway
+
+    def process(self, order_id: str):
+        return self.repo.save(order_id)
+"""
+    parsed = parse_source(source, module_id="order.py")
+    cls_node = next(node for node in parsed.nodes if node.id == "order.py::OrderProcessor")
+    assert "uninjected_dependency" not in cls_node.tags

@@ -21,6 +21,79 @@ EXTERNAL_ID = "external"
 _FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
 _GOD_CLASS_METHODS = 30
 
+_EXCLUDED_INSTANTIATIONS = frozenset(
+    {
+        "BaseException",
+        "Exception",
+        "ValueError",
+        "TypeError",
+        "KeyError",
+        "IndexError",
+        "AttributeError",
+        "RuntimeError",
+        "NotImplementedError",
+        "IOError",
+        "OSError",
+        "FileNotFoundError",
+        "StopIteration",
+        "PermissionError",
+        "TimeoutError",
+        "Path",
+        "PurePath",
+        "PosixPath",
+        "WindowsPath",
+        "UUID",
+        "Decimal",
+        "datetime",
+        "date",
+        "time",
+        "timedelta",
+        "timezone",
+        "UTC",
+        "Counter",
+        "defaultdict",
+        "deque",
+        "OrderedDict",
+        "BytesIO",
+        "StringIO",
+        "Pattern",
+        "Match",
+    }
+)
+
+
+def is_likely_class_instantiation(expr: ast.expr) -> bool:
+    """Return True if an AST call target represents a class instantiation candidate for DI."""
+    name: str | None = None
+    if isinstance(expr, ast.Name):
+        name = expr.id
+    elif isinstance(expr, ast.Attribute):
+        name = expr.attr
+    if name is not None:
+        if name in _EXCLUDED_INSTANTIATIONS:
+            return False
+        # PascalCase / CamelCase: starts with uppercase, has lowercase, no underscore
+        if len(name) > 1 and name[0].isupper() and not name.isupper() and "_" not in name:
+            return True
+    return False
+
+
+def has_global_state_access(node: ast.AST) -> bool:
+    """Return True if AST node uses global or nonlocal statements."""
+    return any(isinstance(child, (ast.Global, ast.Nonlocal)) for child in ast.walk(node))
+
+
+def has_singleton_access(node: ast.AST) -> bool:
+    """Return True if AST node calls singleton accessors or global service locators."""
+    for child in ast.walk(node):
+        if (
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Attribute)
+            and child.func.attr in ("get_instance", "instance", "get_default", "default_instance")
+        ):
+            return True
+    return False
+
 
 @dataclass(frozen=True, slots=True)
 class ParseResult:
@@ -112,12 +185,64 @@ class _Collector(ast.NodeVisitor):
         if any(name is not None and is_ingress_decorator(name) for name in decorators):
             tags.add("ingress")
         tags.add("untyped" if is_untyped(node) else "typed")
+        if has_global_state_access(node):
+            tags.add("global_state")
+            tags.add("tight_coupling")
+        if has_singleton_access(node):
+            tags.add("tight_coupling")
         return frozenset(tags)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         class_id = f"{self.module_id}::{node.name}"
         method_count = sum(isinstance(item, _FUNCTIONS) for item in node.body)
-        tags = {"god_class"} if method_count > _GOD_CLASS_METHODS else set()
+
+        init_method = next(
+            (item for item in node.body if isinstance(item, _FUNCTIONS) and item.name == "__init__"),
+            None,
+        )
+        injectable_params: list[str] = []
+        if init_method is not None:
+            injectable_params = [arg.arg for arg in init_method.args.args if arg.arg != "self"] + [
+                arg.arg for arg in init_method.args.kwonlyargs
+            ]
+            if init_method.args.vararg:
+                injectable_params.append(init_method.args.vararg.arg)
+            if init_method.args.kwarg:
+                injectable_params.append(init_method.args.kwarg.arg)
+        has_injectable_init = len(injectable_params) > 0
+
+        concrete_instantiations = 0
+        uses_global = False
+        uses_singleton = False
+        for item in node.body:
+            if isinstance(item, _FUNCTIONS):
+                for child in ast.walk(item):
+                    if isinstance(child, ast.Call) and is_likely_class_instantiation(child.func):
+                        concrete_instantiations += 1
+                if has_global_state_access(item):
+                    uses_global = True
+                if has_singleton_access(item):
+                    uses_singleton = True
+
+        tags: set[str] = set()
+        if method_count > _GOD_CLASS_METHODS:
+            tags.add("god_class")
+        if uses_global:
+            tags.add("global_state")
+            tags.add("tight_coupling")
+        if uses_singleton:
+            tags.add("tight_coupling")
+        if concrete_instantiations > 0 and not has_injectable_init:
+            tags.add("uninjected_dependency")
+            tags.add("tight_coupling")
+        if (
+            (method_count >= 10 or loc(node) >= 100)
+            and not has_injectable_init
+            and (concrete_instantiations > 0 or uses_global)
+        ):
+            tags.add("god_component")
+            tags.add("uninjected_dependency")
+
         class_id = self._add_symbol(
             class_id,
             node,

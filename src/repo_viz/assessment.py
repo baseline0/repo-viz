@@ -48,6 +48,9 @@ class Antipattern:
     HYGIENE_ROT = "hygiene_rot"
     SATD_DEBT = "satd_debt"
     SECURITY_SMELL = "security_smell"
+    TIGHT_COUPLING = "tight_coupling"
+    GLOBAL_STATE = "global_state"
+    UNINJECTED_DEPENDENCY = "uninjected_dependency"
 
 
 class RefactorTier(StrEnum):
@@ -212,7 +215,7 @@ def detect_antipatterns(node: Node, findings: Sequence[AuditFinding]) -> tuple[s
     if (metrics.fan_in + metrics.fan_out) >= 15:
         patterns.append(Antipattern.COUPLING_HUB)
 
-    # Smells detected via findings
+    # Smells detected via findings and AST tags
     finding_indicators = {f.indicator_id for f in findings}
     if "boundary" in finding_indicators or "arch_drift" in finding_indicators:
         patterns.append(Antipattern.BOUNDARY_LEAK)
@@ -222,6 +225,12 @@ def detect_antipatterns(node: Node, findings: Sequence[AuditFinding]) -> tuple[s
         patterns.append(Antipattern.SATD_DEBT)
     if "security" in finding_indicators:
         patterns.append(Antipattern.SECURITY_SMELL)
+    if "global_state" in node.tags:
+        patterns.append(Antipattern.GLOBAL_STATE)
+    if "uninjected_dependency" in node.tags:
+        patterns.append(Antipattern.UNINJECTED_DEPENDENCY)
+    if "tight_coupling" in node.tags:
+        patterns.append(Antipattern.TIGHT_COUPLING)
 
     return tuple(sorted(dict.fromkeys(patterns)))
 
