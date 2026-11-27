@@ -1,0 +1,4 @@
+# Self-hosted runner labels this repo uses. actionlint rejects any other label as unknown.
+self-hosted-runner:
+  labels:
+    - fleet-ci
