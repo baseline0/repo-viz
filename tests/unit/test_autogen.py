@@ -22,6 +22,11 @@ def test_generated_routes_have_no_fleet_imports() -> None:
     assert "fleet_base" not in ROUTES.read_text(encoding="utf-8")
 
 
+def test_generated_routes_match_the_typer_app() -> None:
+    result = CliRunner().invoke(autogen_app, ["check-api"])
+    assert result.exit_code == 0, result.output
+
+
 def test_check_endpoints_fails_on_a_stale_file(tmp_path: Path) -> None:
     (tmp_path / "recipes.toml").write_text('default_prefix = "rv"\n', encoding="utf-8")
     stale = tmp_path / "generated.just"

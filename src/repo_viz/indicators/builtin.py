@@ -38,6 +38,8 @@ _CH_LOW = 4.9
 _CH_HIGH = 7.1
 
 
+# Deferred under wi-repoviz-repo-viz-debt: the fan_in is deliberate reuse of one
+# three-line lookup by every evaluator; a wrapper would add indirection, not reduce coupling.
 def _threshold(context: EvaluationContext, name: str, default: float) -> float:
     """Thresholds are context-specific; config overrides the literature priors."""
     return context.thresholds.get(name, default)

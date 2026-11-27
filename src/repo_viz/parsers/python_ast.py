@@ -95,6 +95,77 @@ def has_singleton_access(node: ast.AST) -> bool:
     return False
 
 
+def _injectable_params(node: ast.ClassDef) -> list[str]:
+    """Return the constructor parameters that could be supplied by a caller."""
+    init_method = next(
+        (item for item in node.body if isinstance(item, _FUNCTIONS) and item.name == "__init__"),
+        None,
+    )
+    if init_method is None:
+        return []
+
+    params = [arg.arg for arg in init_method.args.args if arg.arg != "self"] + [
+        arg.arg for arg in init_method.args.kwonlyargs
+    ]
+    if init_method.args.vararg:
+        params.append(init_method.args.vararg.arg)
+    if init_method.args.kwarg:
+        params.append(init_method.args.kwarg.arg)
+    return params
+
+
+def _class_tags(node: ast.ClassDef) -> frozenset[str]:
+    """Derive structural-probe tags for one class without visitor state."""
+    method_count = sum(isinstance(item, _FUNCTIONS) for item in node.body)
+    has_injectable_init = bool(_injectable_params(node))
+    concrete_instantiations = 0
+    uses_global = False
+    uses_singleton = False
+
+    for item in node.body:
+        if not isinstance(item, _FUNCTIONS):
+            continue
+        concrete_instantiations += sum(
+            1 for child in ast.walk(item) if isinstance(child, ast.Call) and is_likely_class_instantiation(child.func)
+        )
+        uses_global = uses_global or has_global_state_access(item)
+        uses_singleton = uses_singleton or has_singleton_access(item)
+
+    tags: set[str] = set()
+    if method_count > _GOD_CLASS_METHODS:
+        tags.add("god_class")
+    if uses_global:
+        tags.update({"global_state", "tight_coupling"})
+    if uses_singleton:
+        tags.add("tight_coupling")
+    if concrete_instantiations > 0 and not has_injectable_init:
+        tags.update({"uninjected_dependency", "tight_coupling"})
+    if (
+        (method_count >= 10 or loc(node) >= 100)
+        and not has_injectable_init
+        and (concrete_instantiations > 0 or uses_global)
+    ):
+        tags.update({"god_component", "uninjected_dependency"})
+    return frozenset(tags)
+
+
+def _function_tags(node: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
+    """Derive ingress, typing and coupling tags for one function."""
+    tags: set[str] = set()
+    decorators = [
+        dotted_name(decorator.func if isinstance(decorator, ast.Call) else decorator)
+        for decorator in node.decorator_list
+    ]
+    if any(name is not None and is_ingress_decorator(name) for name in decorators):
+        tags.add("ingress")
+    tags.add("untyped" if is_untyped(node) else "typed")
+    if has_global_state_access(node):
+        tags.update({"global_state", "tight_coupling"})
+    if has_singleton_access(node):
+        tags.add("tight_coupling")
+    return frozenset(tags)
+
+
 @dataclass(frozen=True, slots=True)
 class ParseResult:
     """Symbol nodes and leaf edges extracted from one module."""
@@ -176,79 +247,14 @@ class _Collector(ast.NodeVisitor):
         )
         return symbol_id
 
-    def _function_tags(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> frozenset[str]:
-        tags: set[str] = set()
-        decorators = [
-            dotted_name(decorator.func if isinstance(decorator, ast.Call) else decorator)
-            for decorator in node.decorator_list
-        ]
-        if any(name is not None and is_ingress_decorator(name) for name in decorators):
-            tags.add("ingress")
-        tags.add("untyped" if is_untyped(node) else "typed")
-        if has_global_state_access(node):
-            tags.add("global_state")
-            tags.add("tight_coupling")
-        if has_singleton_access(node):
-            tags.add("tight_coupling")
-        return frozenset(tags)
-
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         class_id = f"{self.module_id}::{node.name}"
-        method_count = sum(isinstance(item, _FUNCTIONS) for item in node.body)
-
-        init_method = next(
-            (item for item in node.body if isinstance(item, _FUNCTIONS) and item.name == "__init__"),
-            None,
-        )
-        injectable_params: list[str] = []
-        if init_method is not None:
-            injectable_params = [arg.arg for arg in init_method.args.args if arg.arg != "self"] + [
-                arg.arg for arg in init_method.args.kwonlyargs
-            ]
-            if init_method.args.vararg:
-                injectable_params.append(init_method.args.vararg.arg)
-            if init_method.args.kwarg:
-                injectable_params.append(init_method.args.kwarg.arg)
-        has_injectable_init = len(injectable_params) > 0
-
-        concrete_instantiations = 0
-        uses_global = False
-        uses_singleton = False
-        for item in node.body:
-            if isinstance(item, _FUNCTIONS):
-                for child in ast.walk(item):
-                    if isinstance(child, ast.Call) and is_likely_class_instantiation(child.func):
-                        concrete_instantiations += 1
-                if has_global_state_access(item):
-                    uses_global = True
-                if has_singleton_access(item):
-                    uses_singleton = True
-
-        tags: set[str] = set()
-        if method_count > _GOD_CLASS_METHODS:
-            tags.add("god_class")
-        if uses_global:
-            tags.add("global_state")
-            tags.add("tight_coupling")
-        if uses_singleton:
-            tags.add("tight_coupling")
-        if concrete_instantiations > 0 and not has_injectable_init:
-            tags.add("uninjected_dependency")
-            tags.add("tight_coupling")
-        if (
-            (method_count >= 10 or loc(node) >= 100)
-            and not has_injectable_init
-            and (concrete_instantiations > 0 or uses_global)
-        ):
-            tags.add("god_component")
-            tags.add("uninjected_dependency")
-
         class_id = self._add_symbol(
             class_id,
             node,
             self.scope,
             3,
-            frozenset(tags),
+            _class_tags(node),
             cyclomatic(node.body),
             cognitive_complexity(node.body),
         )
@@ -261,7 +267,7 @@ class _Collector(ast.NodeVisitor):
                     item,
                     class_id,
                     4,
-                    self._function_tags(item),
+                    _function_tags(item),
                     cyclomatic(item.body),
                     cognitive_complexity(item.body),
                 )
@@ -285,7 +291,7 @@ class _Collector(ast.NodeVisitor):
                 node,
                 self.scope,
                 4,
-                self._function_tags(node),
+                _function_tags(node),
                 cyclomatic(node.body),
                 cognitive_complexity(node.body),
             )
@@ -323,16 +329,16 @@ class _Collector(ast.NodeVisitor):
             )
 
     def visit_Call(self, node: ast.Call) -> None:
-        dotted = self._resolve_call(node.func)
+        dotted = _resolve_call(self, node.func)
         if dotted is not None:
             kind, tracks, tags = classify_call(dotted)
             if tags:
-                self._attach_tags(tags)
+                _attach_tags(self, tags)
                 target = self.known_modules.get(dotted, EXTERNAL_ID)
             elif dotted in self.symbol_ids:
                 target, kind, tracks = dotted, EdgeKind.CALL, frozenset({Track.CONTROL})
             else:
-                module = self._longest_known_prefix(dotted)
+                module = _longest_known_prefix(self.known_modules, dotted)
                 if module is None or module == self.module_id:
                     return
                 target, kind, tracks = module, EdgeKind.CALL, frozenset({Track.CONTROL})
@@ -348,54 +354,56 @@ class _Collector(ast.NodeVisitor):
                 )
         self.generic_visit(node)
 
-    def _attach_tags(self, tags: frozenset[str]) -> None:
-        scope_id = self.scope
-        updated = []
-        for node in self.nodes:
-            if node.id == scope_id:
-                updated.append(
-                    Node(
-                        id=node.id,
-                        label=node.label,
-                        kind=node.kind,
-                        parent=node.parent,
-                        lod_rank=node.lod_rank,
-                        path=node.path,
-                        tags=node.tags | tags,
-                        metrics=node.metrics,
-                        status=node.status,
-                    )
-                )
-            else:
-                updated.append(node)
-        self.nodes = updated
 
-    def _longest_known_prefix(self, dotted: str) -> str | None:
-        candidates = [module for module in self.known_modules if dotted.startswith(module)]
-        if not candidates:
-            return None
-        module = max(candidates, key=len)
-        return self.known_modules[module]
-
-    def _resolve_call(self, func: ast.expr) -> str | None:
-        if isinstance(func, ast.Name):
-            if func.id in self.defined:
-                return self.defined[func.id]
-            return self.aliases.get(func.id)
-        if isinstance(func, ast.Attribute):
-            parts: list[str] = []
-            current: ast.expr = func
-            while isinstance(current, ast.Attribute):
-                parts.append(current.attr)
-                current = current.value
-            if isinstance(current, ast.Name):
-                base = current.id
-                if base in self.aliases:
-                    return ".".join([self.aliases[base], *reversed(parts)])
-                if base in self.defined:
-                    candidate = f"{self.defined[base]}::{'.'.join(reversed(parts))}"
-                    return candidate if candidate in self.symbol_ids else None
+def _longest_known_prefix(known_modules: Mapping[str, str], dotted: str) -> str | None:
+    """Return the mapped module for the longest dotted prefix of ``dotted``."""
+    candidates = [module for module in known_modules if dotted.startswith(module)]
+    if not candidates:
         return None
+    return known_modules[max(candidates, key=len)]
+
+
+def _attach_tags(collector: _Collector, tags: frozenset[str]) -> None:
+    """Merge derived tags into the node for the collector's current scope."""
+    scope_id = collector.scope
+    collector.nodes = [
+        Node(
+            id=node.id,
+            label=node.label,
+            kind=node.kind,
+            parent=node.parent,
+            lod_rank=node.lod_rank,
+            path=node.path,
+            tags=node.tags | tags,
+            metrics=node.metrics,
+            status=node.status,
+        )
+        if node.id == scope_id
+        else node
+        for node in collector.nodes
+    ]
+
+
+def _resolve_call(collector: _Collector, func: ast.expr) -> str | None:
+    """Resolve a call target against imports and symbols known to the collector."""
+    if isinstance(func, ast.Name):
+        if func.id in collector.defined:
+            return collector.defined[func.id]
+        return collector.aliases.get(func.id)
+    if isinstance(func, ast.Attribute):
+        parts: list[str] = []
+        current: ast.expr = func
+        while isinstance(current, ast.Attribute):
+            parts.append(current.attr)
+            current = current.value
+        if isinstance(current, ast.Name):
+            base = current.id
+            if base in collector.aliases:
+                return ".".join([collector.aliases[base], *reversed(parts)])
+            if base in collector.defined:
+                candidate = f"{collector.defined[base]}::{'.'.join(reversed(parts))}"
+                return candidate if candidate in collector.symbol_ids else None
+    return None
 
 
 def parse_source(
@@ -421,9 +429,9 @@ def parse_source(
             target = collector.defined.get(dotted)
             if target is None:
                 alias = collector.aliases.get(dotted)
-                target = collector._longest_known_prefix(alias) if alias is not None else None
+                target = _longest_known_prefix(collector.known_modules, alias) if alias is not None else None
             if target is None:
-                target = collector._longest_known_prefix(dotted)
+                target = _longest_known_prefix(collector.known_modules, dotted)
             if (
                 target is not None
                 and target != class_id

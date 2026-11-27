@@ -172,6 +172,59 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
+def _status_from_dict(raw: dict[str, Any]) -> StatusStrip:
+    """Rebuild the fixed status slots from their JSON form."""
+    return StatusStrip(
+        security=StatusState(raw["security"]),
+        boundary=StatusState(raw["boundary"]),
+        efficiency=StatusState(raw["efficiency"]),
+        hygiene=StatusState(raw["hygiene"]),
+        sentinel=StatusState(raw["sentinel"]),
+        arc_start_deg=raw["arc_start_deg"],
+        arc_end_deg=raw["arc_end_deg"],
+    )
+
+
+def _node_from_dict(raw: dict[str, Any]) -> Node:
+    """Rebuild one node, including nested metrics and status."""
+    return Node(
+        id=raw["id"],
+        label=raw["label"],
+        kind=NodeKind(raw["kind"]),
+        parent=raw.get("parent"),
+        lod_rank=raw["lod_rank"],
+        path=raw.get("path"),
+        tags=frozenset(raw.get("tags", [])),
+        metrics=Metrics(**raw["metrics"]),
+        status=_status_from_dict(raw["status"]),
+    )
+
+
+def _edge_from_dict(raw: dict[str, Any]) -> Edge:
+    """Rebuild one edge with its enum-valued kind and tracks."""
+    return Edge(
+        source=raw["source"],
+        target=raw["target"],
+        kind=EdgeKind(raw["kind"]),
+        tracks=frozenset(Track(item) for item in raw["tracks"]),
+        weight=raw["weight"],
+        line=raw.get("line", 0),
+    )
+
+
+def _port_from_dict(raw: dict[str, Any]) -> Port:
+    """Rebuild one membrane port."""
+    return Port(
+        membrane=raw["membrane"],
+        peer=raw["peer"],
+        direction=raw["direction"],
+        kind=EdgeKind(raw["kind"]),
+        tracks=frozenset(Track(item) for item in raw["tracks"]),
+        count=raw["count"],
+        weight=raw["weight"],
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GraphSnapshot:
     """The derived artifact. Regenerate it; never hand-edit it."""
@@ -205,57 +258,12 @@ class GraphSnapshot:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GraphSnapshot:
         """Rebuild a snapshot from its JSON form, including nested dataclasses."""
-        nodes = tuple(
-            Node(
-                id=raw["id"],
-                label=raw["label"],
-                kind=NodeKind(raw["kind"]),
-                parent=raw.get("parent"),
-                lod_rank=raw["lod_rank"],
-                path=raw.get("path"),
-                tags=frozenset(raw.get("tags", [])),
-                metrics=Metrics(**raw["metrics"]),
-                status=StatusStrip(
-                    security=StatusState(raw["status"]["security"]),
-                    boundary=StatusState(raw["status"]["boundary"]),
-                    efficiency=StatusState(raw["status"]["efficiency"]),
-                    hygiene=StatusState(raw["status"]["hygiene"]),
-                    sentinel=StatusState(raw["status"]["sentinel"]),
-                    arc_start_deg=raw["status"]["arc_start_deg"],
-                    arc_end_deg=raw["status"]["arc_end_deg"],
-                ),
-            )
-            for raw in data["nodes"]
-        )
-        edges = tuple(
-            Edge(
-                source=raw["source"],
-                target=raw["target"],
-                kind=EdgeKind(raw["kind"]),
-                tracks=frozenset(Track(item) for item in raw["tracks"]),
-                weight=raw["weight"],
-                line=raw.get("line", 0),
-            )
-            for raw in data["edges"]
-        )
-        ports = tuple(
-            Port(
-                membrane=raw["membrane"],
-                peer=raw["peer"],
-                direction=raw["direction"],
-                kind=EdgeKind(raw["kind"]),
-                tracks=frozenset(Track(item) for item in raw["tracks"]),
-                count=raw["count"],
-                weight=raw["weight"],
-            )
-            for raw in data["ports"]
-        )
         return cls(
             source_repo=data["source_repo"],
             source_commit=data["source_commit"],
             analyzed_at=data["analyzed_at"],
-            nodes=nodes,
-            edges=edges,
-            ports=ports,
+            nodes=tuple(_node_from_dict(raw) for raw in data["nodes"]),
+            edges=tuple(_edge_from_dict(raw) for raw in data["edges"]),
+            ports=tuple(_port_from_dict(raw) for raw in data["ports"]),
             schema=data.get("schema", SCHEMA_VERSION),
         )

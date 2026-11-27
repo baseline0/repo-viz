@@ -89,6 +89,13 @@ class OrderProcessor:
     assert "tight_coupling" in cls_node.tags
 
 
+def test_probe_flags_god_class_by_method_count() -> None:
+    methods = "\n".join(f"    def method_{index}(self) -> None: pass" for index in range(31))
+    parsed = parse_source(f"class Large:\n{methods}\n", module_id="large.py")
+    cls = next(node for node in parsed.nodes if node.id == "large.py::Large")
+    assert "god_class" in cls.tags
+
+
 def test_probe_permits_injected_dependencies() -> None:
     source = """\
 class OrderProcessor:
