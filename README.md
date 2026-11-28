@@ -30,6 +30,12 @@ Snapshots and indicator results are derived artifacts: regenerate them, never ed
 
 Click a component in the viewer and use **Audit component** or **Prepare work-item request** to produce a cited audit report or a human-authorized work-item proposal. The generated recipes are `just rv-audit` and `just rv-prepare-work-item`; the authenticated service exposes `/api/v1/audit` and `/api/v1/work-item`. The proposal is never auto-authorized or dispatched — see ADR-011.
 
+### Review digests
+
+`just rv-review-digests graph.json indicators.json [--audit audit.json] [--config config/indicators.toml] [--trigger render]` emits a read-only `repo-viz/review-digests@1` report; the equivalent CLI is `uv run repo-viz review-digests --snapshot graph.json --results indicators.json --json`. It adds no API route and writes no files. The report shape is in `schemas/review-digests.schema.json`.
+
+Every digest is `sha256:<hex>` of canonical JSON — `json.dumps(value, sort_keys=True, separators=(",", ":"))`, UTF-8 — over the source artifact with its own top-level `digest` field omitted. Only declared volatile fields are excluded: graph `analyzed_at`, indicator rows' `results[*].computed_at`, and audit `created_at`. Everything else is retained, including `source_commit`, `schema`/`version`, `trigger`, indicator rows, findings, metrics and evidence. The report records the path used for each digest, the artifact source commits (indicator results inherit the paired graph's commit), the effective trigger (supplied `--trigger`, or the single value found in indicator rows), and `config_digest` (the same canonical digest over parsed config TOML; null when no config is supplied). Digests cover the source artifacts, not this report: recompute them from the recorded paths before trusting a receipt.
+
 The container image is built from the `Dockerfile` (Node stage builds the viewer, Python stage serves the API and MCP). Its Kubernetes overlays and digest pins live in the `infrastructure` repo under `deploy/tools/overlays/*/tool-repo-viz/`; the image is named `localhost/tool-repo-viz` and is referenced by digest, never by tag. Applying or promoting the overlay is an owner step.
 
 See `CONTRIBUTING.md` for setup, test tiers (`tests/unit/`, `tests/integration/`, shared fixtures in `tests/conftest.py`), and the branch/commit workflow.

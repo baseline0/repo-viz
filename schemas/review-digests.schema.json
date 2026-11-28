@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet.local/repo-viz/review-digests.schema.json",
+  "title": "repo-viz review digest bundle",
+  "description": "Read-only review-facing report of canonical SHA-256 digests for graph, indicator and audit artifacts. Digests cover canonical JSON (keys sorted, compact separators, UTF-8) of each source artifact with its own top-level digest field and only the declared volatile fields omitted.",
+  "type": "object",
+  "required": ["schema", "config_digest", "config_path", "source_commit", "trigger", "graph", "indicators", "audit"],
+  "properties": {
+    "schema": { "const": "repo-viz/review-digests@1" },
+    "config_digest": {
+      "description": "Canonical digest of parsed indicator config TOML, or null when no config was supplied.",
+      "oneOf": [{ "$ref": "#/$defs/digest" }, { "type": "null" }]
+    },
+    "config_path": {
+      "description": "Path of the config artifact used for config_digest.",
+      "type": ["string", "null"]
+    },
+    "source_commit": {
+      "description": "Source commit recorded by the paired graph artifact.",
+      "type": "string",
+      "minLength": 1
+    },
+    "trigger": {
+      "description": "Effective trigger: the supplied --trigger, the single value found in indicator rows, or null when rows mix triggers.",
+      "type": ["string", "null"]
+    },
+    "graph": { "$ref": "#/$defs/artifactDigest" },
+    "indicators": { "$ref": "#/$defs/artifactDigest" },
+    "audit": {
+      "description": "Absent when no audit artifact was supplied.",
+      "oneOf": [{ "$ref": "#/$defs/artifactDigest" }, { "type": "null" }]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "artifactDigest": {
+      "type": "object",
+      "required": ["path", "digest", "source_commit", "excluded_fields"],
+      "properties": {
+        "path": { "description": "Artifact path used to compute the digest.", "type": "string" },
+        "digest": { "$ref": "#/$defs/digest" },
+        "source_commit": {
+          "description": "Commit recorded by the artifact; indicator results inherit the paired graph's commit.",
+          "type": "string",
+          "minLength": 1
+        },
+        "excluded_fields": {
+          "description": "Volatile fields omitted from the digest, expressed as artifact-relative paths.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "schema": { "description": "Value of the artifact's schema field, when present.", "type": "string" },
+        "version": {
+          "description": "Value of the artifact's version field, when present (indicator results).",
+          "type": ["string", "integer"]
+        },
+        "trigger": { "description": "Effective trigger for this artifact, when applicable.", "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

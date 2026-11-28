@@ -6,6 +6,7 @@
 - ``summary`` — print counts from a snapshot.
 - ``evaluate_indicators`` — run configured evaluators with optional producers.
 - ``check_indicators`` — validate config and resolve every evaluator target.
+- ``review_digests`` — emit canonical review digests for stored structural artifacts.
 - ``serve`` — block on the built viewer's static server.
 """
 
@@ -28,6 +29,7 @@ from repo_viz.indicators.spec import EvaluationContext, load_config
 from repo_viz.model import GraphSnapshot
 from repo_viz.operations import collect_metrics
 from repo_viz.output import JsonOption, command_output
+from repo_viz.review_digests import REVIEW_DIGEST_SCHEMA, build_review_digest_bundle
 from repo_viz.snapshot import build_snapshot, snapshot_counts, write_snapshot
 from repo_viz.web import serve as serve_viewer
 from repo_viz.workitem import build_work_item_payload, write_work_item
@@ -135,6 +137,32 @@ def check_results(
         out_stream.echo(f"{report['results']} results, {len(report['problems'])} problems")
         out_stream.data = report
     return report
+
+
+@app.command()
+def review_digests(
+    snapshot: Path = typer.Option(..., "--snapshot", help="Graph snapshot JSON to digest"),
+    results: Path = typer.Option(..., "--results", help="Indicator results JSON to digest"),
+    audit: str = typer.Option("", "--audit", help="Optional audit report JSON to digest"),
+    config: str = typer.Option("", "--config", help="Optional indicator config TOML to digest"),
+    trigger: str = typer.Option("", "--trigger", help="render or change; inferred from results when omitted"),
+    json_output: bool = JsonOption,
+) -> dict[str, Any]:
+    """Emit canonical review digests for structural artifacts without writing files."""
+    with command_output(json_output) as out_stream:
+        bundle = build_review_digest_bundle(
+            snapshot,
+            results,
+            audit_path=Path(audit) if audit else None,
+            config_path=Path(config) if config else None,
+            trigger=trigger or None,
+        )
+        payload = bundle.to_dict()
+        out_stream.echo(
+            f"{REVIEW_DIGEST_SCHEMA}: graph {payload['graph']['digest']}, indicators {payload['indicators']['digest']}"
+        )
+        out_stream.data = payload
+    return payload
 
 
 @app.command()
